@@ -232,7 +232,7 @@ main_init(argc, argv)
 			
 			if (slirp_socket_passwd) {
 				/* Internet connection */
-				sprintf(buff, "%d %d %s", unit, 0, pwd);
+				sprintf(buff, "%d %d %s", unit, 0, slirp_socket_pwd);
 			}
 #ifndef NO_UNIX_SOCKETS
 			  else {

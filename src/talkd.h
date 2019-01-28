@@ -36,6 +36,12 @@
 #ifndef _PROTOCOLS_TALKD_H_
 #define	_PROTOCOLS_TALKD_H_
 
+/* Phil LoCascio's patch for SGI Irix 6.5 -kp 5-29-2000 */
+#ifdef SGI_OLD_SA
+#define sa_family sa_family_old
+#define sa_data sa_data_old
+#endif
+
 struct old_sockaddr {
         u_short sa_family;              /* address family */
         char    sa_data[14];            /* up to 14 bytes of direct address */
