@@ -18,6 +18,10 @@ To unpack Slirp type the following command at your shell prompt:
 
 gzip -dc slirp-VERSION.tar.gz | tar xvf -
 
+Of course, if you have the latest GNU tar...
+
+tar xfvz slirp-VERSION.tar.gz
+
 Where VERSION is the version of Slirp you are unpacking.  This will unpack
 the Slirp package into a directory called slirp-VERSION.
 
@@ -123,7 +127,10 @@ other "SLIP-emulators".  The FAQ (Frequently Asked Questions) for
 alt.dcom.slip-emulators is included in the "docs" directory, I would suggest
 reading this as well.  
 
-A mailing list for Slirp development is off of egroups, named slirp-devel. 
+The Slirp website (http://slirp.sourcefourge.net) has some information
+too.  Go there!
+
+A mailing list for Slirp development is hosted by SourceForge.
 If you are intrested in pitching in, go ahead and subscribe.
 
 If all else fails, send Kelly, the new maintainer, e-mail at 

@@ -1,3 +1,7 @@
+Version 1.0.10 RELASE May 27, 2000 <Kelly>
+- Moved the whole mess to SourceForge.  The URL is slirp.sourceforge.net now.
+  Updated docs.
+
 Version 1.0.9 RELEASE Feb 22, 2000 <Kelly>
 - Added some #ifdefs to fix bad compilation on Solaris i86 boxes.
   May also fix a few things with others.  We'll find out soon.

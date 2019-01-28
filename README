@@ -1,9 +1,7 @@
-HOWLS!!!  Thank you for pulling this latest release of Slirp, which finally
-is getting off the ground.
+HOWLS!!!  Thank you for pulling this latest release of Slirp.
 
 The new maintainer for Slirp is Kelly "STrRedWolf" Price
-<tygris+slirp@erols.com>.  The new Slirp page keeps changing, so keep an eye
-on Freshmeat.net (as we're listed!)
+<tygris+slirp@erols.com>.  The homepage is now http://slirp.sourceforge.net
 
 Now, this is a new release with new numbering similar to the Linux kernel,
 so if you see a x.even.x release, it's a stable release, while x.odd.x is a
