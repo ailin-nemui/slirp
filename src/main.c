@@ -602,10 +602,32 @@ main_init(argc, argv)
      keep it open.
 
      Mainly for testing purposes, nice to be able to do fprintf(stderr...
+
+     Includes Tim Watt's ttyname() fixes (modified)
+
   */
 
   {
   int blnKeepErr, blnKeepStdOut;
+  const char *ttyname_0_dup = 0;
+  const char *ttyname_1_dup = 0;
+  const char *ttyname_2_dup = 0;
+
+#define dup_ttyname(n) \
+  if( (ttyname_##n##_dup = ttyname(n)) ) { \
+    ttyname_##n##_dup = strdup(ttyname_##n##_dup); \
+  }
+
+#define clr_ttyname(n) \
+  if( (ttyname_##n##_dup) ) { \
+    free((char *) ttyname_##n##_dup); \
+    ttyname_##n##_dup = 0; \
+  }
+
+  dup_ttyname(0)
+  dup_ttyname(1)
+  dup_ttyname(2)
+
 
   /* stderr going elsewhere ?? */
   blnKeepErr = FALSE;
@@ -613,25 +635,31 @@ main_init(argc, argv)
   if(!isatty(2))
     blnKeepErr = TRUE;
   else {
-    if((slirp_tty == NULL && strcmp(ttyname(0), ttyname(2)) == 0) ||
-       (slirp_tty != NULL && strcmp(ttyname(2), slirp_tty) == 0) )
+    if((slirp_tty == NULL && ttyname_0_dup && ttyname_2_dup && strcmp(ttyname_0_dup, ttyname_2_dup) == 0) ||
+       (slirp_tty != NULL && ttyname_2_dup && strcmp(ttyname_2_dup, slirp_tty) == 0) )
         blnKeepErr = FALSE;
     else
         blnKeepErr = TRUE;
     }
-
 
   /* stdout going elsewhere ?? */
   blnKeepStdOut = FALSE;
   if(!isatty(1))
     blnKeepStdOut = TRUE;
   else {
-    if((slirp_tty == NULL && strcmp(ttyname(0), ttyname(1)) == 0) ||
-       (slirp_tty != NULL && strcmp(ttyname(1), slirp_tty) == 0) )
+    if((slirp_tty == NULL && ttyname_0_dup && ttyname_1_dup && strcmp(ttyname_0_dup, ttyname_1_dup) == 0) ||
+       (slirp_tty != NULL && ttyname_1_dup && strcmp(ttyname_1_dup, slirp_tty) == 0) )
         blnKeepStdOut = FALSE;
     else
         blnKeepStdOut = TRUE;
     }
+
+  clr_ttyname(0);
+  clr_ttyname(1);
+  clr_ttyname(2);
+
+#undef dup_ttyname
+#undef clr_ttyname
 
   i = open("/dev/null", O_RDWR);
 
@@ -1068,7 +1096,7 @@ cont_1:
 					"1 Attached as unit %d, device %s\r\n\r\n[talking %s, %d baud]\r\n\r\nSLiRP Ready ...",
 					unit, device?device:"(socket)", buff2, ttyp->baud);
 #else
-				snprintf(buff, sizeof(buff)
+                               snprintf(buff, sizeof(buff),
 					"1 Attached as unit %d, device %s\r\n\r\n[talking %s]\r\n\r\nSLiRP Ready ...",
 					unit, device, buff2);
 #endif

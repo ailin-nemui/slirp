@@ -98,7 +98,9 @@ ttystats(ttyp)
 	       ttyp->proto==PROTO_PPP?"PPP":
 #endif
 	       "SLIP"), buff);
+#ifndef FULL_BOLT
 	lprint("  %d baudrate\r\n", ttyp->baud);
+#endif
 	lprint("  interface is %s\r\n", ttyp->up?"up":"down");
 	lprint("  using fd %d, guardian pid is %d\r\n", ttyp->fd, ttyp->pid);
 #ifndef FULL_BOLT

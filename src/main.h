@@ -5,6 +5,12 @@
  * terms and conditions of the copyright.
  */
 
+#define TRUE 1
+#define FALSE 0
+
+#include <sys/types.h>
+#include <unistd.h>
+
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
