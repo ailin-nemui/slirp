@@ -1,0 +1,2 @@
+#define SLIRP_VERSION "1.0.9"
+#define SLIRP_STATUS "RELEASE"
