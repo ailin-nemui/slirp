@@ -61,6 +61,15 @@ terminal and put Slirp in the background. Later, you can type
     slirp -l 0
 .DE
 to "reconnect" Slirp again.
+.PP
+Quick note for PDA users:  If you set SLIRP_TTY to the tty connected
+to your PDA (Palm, POSE emulator, etc.), Slirp will use that tty for
+communication.  You can use PPP without full masquerading, although
+you will be subject to the standard Slirp constraints.  You may need
+to experiment to find the correct baud rate.  Start with 19200 for 
+Palms.  If Slirp was not compiled with DO_CFSETSPEED, you'll need to
+set the speed on the tty manually.  Use an appropriate variant of 
+"stty 19200 < /dev/pilot" after starting slirp.
 .SH "CONFIGURING SLIRP"
 .I Slirp
 can be configured in 3 different ways: the command line, the

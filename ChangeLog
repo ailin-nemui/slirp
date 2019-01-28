@@ -1,3 +1,12 @@
+Version 1.0.13 RELEASE Sept 30, 2000 <Kelly>
+- Added a patch posted on SourceForge to use any arbitrary tty as a port
+  instead of the console.
+- Fixed above patch to restore normal functionality by making the tty
+  /dev/tty
+- Fixed the above fix by saving and restoring the tty state.
+
+* Anyone know about Secure sockets?
+
 Version 1.0.12 RELEASE August 30, 2000 <Kelly>
 - Fixed my patch to sync with Debian's version of Slirp.
 - Promised again not to "pull a Linus" -- aka releasing it and not

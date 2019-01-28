@@ -536,7 +536,10 @@ relay(s)
 	signal(SIGTERM, slirp_exit);
 	
 	/* Fudge to get term_raw and term_restore to work */
-	ttyp = tty_attach(0, (char *)0);
+	if (NULL == (ttyp = tty_attach (0, slirp_tty))) {
+         lprint ("Error: tty_attach failed in misc.c:relay()\r\n");
+         slirp_exit (1);
+    }
 	ttyp->fd = 0;
 	ttyp->flags |= TTY_CTTY;
 	term_raw(ttyp);

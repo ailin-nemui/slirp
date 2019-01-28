@@ -12,4 +12,9 @@ bug reports that don't have alot of stuff to go on.  Also contained in that
 file is info on the mailing list.  Read it if you want to mess around with it,
 there's alot to do inside!!!
 
+One last thing.  For the arbitrary tty, set the enviroment varible SLIRP_TTY
+to where you need to connect.  I use SLIRP_TTY=/dev/pilot slirp for my
+Palm Pilot.
+
+
 --Kelly

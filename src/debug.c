@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1995 Danny Gasparovski.
+ * Portions copyright (c) 2000 Kelly Price.
  * 
  * Please read the file COPYRIGHT for the 
  * terms and conditions of the copyright.
@@ -16,6 +17,12 @@ int dostats = 0;
 int slirp_debug = 0;
 
 extern char *strerror _P((int));
+
+/* Carry over one item from main.c so that the tty's restored. 
+ * Only done when the tty being used is /dev/tty --RedWolf */
+extern struct termios slirp_tty_settings;
+extern int slirp_tty_restore;
+
 
 void
 debug_init(file, dbg)
@@ -354,5 +361,8 @@ slirp_exit(exit_status)
 			    (long) getppid());
     	}
 	
+	/* Restore the terminal if we gotta */
+	if(slirp_tty_restore)
+	  tcsetattr(0,TCSANOW, &slirp_tty_settings);  /* NOW DAMMIT! */
 	exit(exit_status);
 }

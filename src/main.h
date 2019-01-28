@@ -29,6 +29,7 @@ extern int ctty_closed;
  */
 #define TIME_DIFF(x,y) (x)-(y) < 0 ? ~0-(y)+(x) : (x)-(y)
 
+extern char *slirp_tty;
 extern char *exec_shell;
 extern u_int curtime;
 extern fd_set readfds, writefds, xfds;

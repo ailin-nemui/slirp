@@ -39,6 +39,7 @@ tty_attach(unit, device)
 			free(ttyp);
 			return 0; /* XXXXX */
 		}
+        lprint ("Opening device %s...\r\n\r\n", device);
 	}
 	
 	/* Link it to the *tail* of the list XXXXX */

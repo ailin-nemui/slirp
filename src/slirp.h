@@ -115,6 +115,10 @@ int inet_aton _P((const char *cp, struct in_addr *ia));
 #if defined(WANT_SYS_IOCTL_H) && defined(HAVE_SYS_IOCTL_H)
 # include <sys/ioctl.h>
 #else
+# define WANT_SYS_TERMIOS_H
+#endif
+
+#ifdef WANT_SYS_TERMIOS_H
 # ifndef INCLUDED_TERMIOS_H
 #  ifdef HAVE_TERMIOS_H
 #   include <termios.h>
@@ -124,6 +128,8 @@ int inet_aton _P((const char *cp, struct in_addr *ia));
 #  define INCLUDED_TERMIOS_H
 # endif
 #endif
+
+
 
 #ifdef HAVE_SYS_SELECT_H
 # include <sys/select.h>

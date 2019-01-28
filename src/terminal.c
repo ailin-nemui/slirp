@@ -42,8 +42,8 @@ term_raw(ttyp)
 #endif
 	
 #ifdef DO_CFSETSPEED
-	cfsetospeed(&tempio, baud);
-	cfsetispeed(&tempio, baud);
+	cfsetospeed(&tempio, ttyp->baud);
+	cfsetispeed(&tempio, ttyp->baud);
 #endif
 	
 	tcsetattr(ttyp->fd, TCSANOW, &tempio);

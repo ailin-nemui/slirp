@@ -1,17 +1,32 @@
 /*
  * Copyright (c) 1995,1996 Danny Gasparovski.
+ * Parts Copyright (c) 2000 Kelly "STrRedWolf" Price.
  * 
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
  */
 
 #define WANT_SYS_IOCTL_H
+#define WANT_TERMIOS_H
 #include <slirp.h>
 #include "main.h"
 
 struct timeval tt;
 struct ex_list *exec_list = NULL;
 
+/* The patch broke slirp, but I think this will fix it.
+ * I did a SLIRP_TTY=/dev/tty slirp and it actually worked.
+ * So lets make it a default and change it all over to what the patch
+ * does.
+ *
+ * Oh, yeah, Slirp likes to set a terminal to raw.  Grumble. 
+ * -RedWolf
+ */
+char *slirp_default_tty = "/dev/tty";  /* Ugly constant, but it works */
+struct termios slirp_tty_settings; /* Half the world probably going to kill me. */
+int slirp_tty_restore=0; /* Just incase we default to /dev/tty */
+
+char *slirp_tty;
 char *exec_shell;
 char *socket_path;
 int do_slowtimo;
@@ -69,6 +84,33 @@ main(argc, argv)
 }
 
 void
+tty_init (void)
+{
+     char* env_tty;
+     size_t env_tty_len;
+     
+     env_tty = getenv ("SLIRP_TTY");
+     if (NULL == env_tty) {
+       /* We're using the terminal, so default to it.
+        * While we're at it, save the terminal. 
+	*/
+       env_tty = slirp_default_tty;  
+       tcgetattr(0,&slirp_tty_settings);
+       slirp_tty_restore++;
+     }
+
+     env_tty_len = strlen (env_tty);
+     slirp_tty = malloc (env_tty_len + 1);
+     if (NULL == slirp_tty) {
+          lprint ("Error:  Out of memory allocating tty string.\r\n");
+          slirp_exit (1);
+     }
+
+     strncpy (slirp_tty, env_tty, env_tty_len);
+     slirp_tty[env_tty_len] = '\000';
+}
+
+void
 main_init(argc, argv)
 	int argc;
 	char **argv;
@@ -80,7 +122,8 @@ main_init(argc, argv)
         sigset_t mask;
 	struct sigaction sa;
 #endif
-	
+
+	tty_init();
 	inet_aton("127.0.0.1", &loopback_addr);
 	ctl_addr.s_addr = 0;
 	special_addr.s_addr = -1;
@@ -273,9 +316,13 @@ main_init(argc, argv)
 	/*
 	 * Setup first modem
 	 */
+    
 	updtime();
-	tty_attach(0, (char *)0);
-	ttys->fd = 0;
+    if (NULL == tty_attach (0, slirp_tty)) {
+         lprint ("Error: tty_attach failed in main.c:main_init()\r\n");
+         slirp_exit (1);
+    }
+    /* Why was this here? ttys->fd = 0; */
 	{
 		struct stat stat;
 		
