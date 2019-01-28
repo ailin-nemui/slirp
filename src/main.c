@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1995,1996 Danny Gasparovski.
- * Parts Copyright (c) 2000 Kelly "STrRedWolf" Price.
+ * Parts Copyright (c) 2000,2001 Kelly "STrRedWolf" Price.
  * 
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
@@ -26,7 +26,7 @@ char *slirp_default_tty = "/dev/tty";  /* Ugly constant, but it works */
 struct termios slirp_tty_settings; /* Half the world probably going to kill me. */
 int slirp_tty_restore=0; /* Just incase we default to /dev/tty */
 
-char *slirp_tty;
+char *slirp_tty=NULL;  /* Make sure this is NULL */
 char *exec_shell;
 char *socket_path;
 int do_slowtimo;
@@ -94,452 +94,455 @@ tty_init (void)
        /* We're using the terminal, so default to it.
         * While we're at it, save the terminal. 
 	*/
-       env_tty = slirp_default_tty;  
+       slirp_tty=NULL;  /* Assume nothing */
        tcgetattr(0,&slirp_tty_settings);
        slirp_tty_restore++;
-     }
-
-     env_tty_len = strlen (env_tty);
-     slirp_tty = malloc (env_tty_len + 1);
-     if (NULL == slirp_tty) {
-          lprint ("Error:  Out of memory allocating tty string.\r\n");
-          slirp_exit (1);
-     }
-
-     strncpy (slirp_tty, env_tty, env_tty_len);
-     slirp_tty[env_tty_len] = '\000';
+     } else {
+       env_tty_len = strlen (env_tty);
+       slirp_tty = malloc (env_tty_len + 1);
+       if (NULL == slirp_tty) {
+	 lprint ("Error:  Out of memory allocating tty string.\r\n");
+	 slirp_exit (1);
+       }
+       
+       strncpy (slirp_tty, env_tty, env_tty_len);
+       slirp_tty[env_tty_len] = '\000';
+     } 
 }
 
 void
 main_init(argc, argv)
-	int argc;
-	char **argv;
+     int argc;
+     char **argv;
 {
-	int i;
-	char buff[512];
-	char *bptr;
+  int i;
+  char buff[512];
+  char *bptr;
 #ifdef USE_PPP
-        sigset_t mask;
-	struct sigaction sa;
+  sigset_t mask;
+  struct sigaction sa;
 #endif
-
-	tty_init();
-	inet_aton("127.0.0.1", &loopback_addr);
-	ctl_addr.s_addr = 0;
-	special_addr.s_addr = -1;
-	
+  
+  tty_init();
+  inet_aton("127.0.0.1", &loopback_addr);
+  ctl_addr.s_addr = 0;
+  special_addr.s_addr = -1;
+  
 #ifdef USE_TMPSOCKET
-	/* Get user's name */
-	username = getlogin();
-	if (!username) {
-		struct passwd *pw = getpwuid(getuid());
-		if (pw)
-		   username = pw->pw_name;
-		if (!username) {
-			lprint("Error: can't find your username\n");
-			slirp_exit(1);
-		}
-	}
-	strcpy(buff, "/tmp/");
-	strcat(buff, username);
-	socket_path = strdup(buff);
-#else
-	if ((bptr = (char *)getenv("HOME")) == NULL) {
-		lprint("Error: can't find your HOME\n");
-		slirp_exit(1);
-	}
-	strcpy(buff, bptr);
-	strcat(buff, "/.slirp_socket");
-	socket_path = strdup(buff);
-#endif
-	
-	/* XXX PPP init */
-#ifdef USE_PPP
-	if (gethostname(hostname, MAXNAMELEN) < 0 ) {
-		perror("couldn't get hostname");
-		die(1);
-	}
-	
-	hostname[MAXNAMELEN-1] = 0;
-	
-	sigemptyset(&mask);
-	sigaddset(&mask, SIGALRM);
-	sa.sa_mask = mask;
-	sa.sa_flags = 0;
-	sa.sa_handler = alrm;
-	sigaction(SIGALRM, &sa, NULL);
-#endif	
-	/* Initialise everything */	
-	for (i = 255; i > 2; i--) {
-		close(i);
-	}
-	
-	/*
-	 * Check the socket
-	 */
-	{
-#ifndef NO_UNIX_SOCKETS
-		struct sockaddr_un sock_un;
-#endif
-		struct sockaddr_in sock_in;
-		int s = -1, unit, port = 0, ret;
-		int want_link = 0;
-		char pwd[256], hn[256];
-		struct hostent *hp;
-		
-		/*
-		 * Check if the user wants to "attach" a new session
-		 */
-		if (argc >= 3 && argv[1][0] == '-' && argv[1][1] == 'l') {
-			argv += 2; /* Point past -l N */
-			argc -= 2;
-			if (strchr(*argv, ':')) {
-				
-				/* It's an internet socket */
-				if (sscanf(*argv, "%d,%[^:]:%d,%s", &unit, hn, &port, pwd) != 4) {
-					lprint("Error: bad arguements to -l\n");
-					slirp_exit(1);
-				}
-				if (strcmp(pwd, "-") == 0) {
-					/* It's in the environmental variable SLIRP_PASSWORD */
-					slirp_socket_passwd = (char *)getenv("SLIRP_PASSWORD");
-					if (slirp_socket_passwd == NULL) {
-						lprint("Error: no password in environmental variable SLIRP_PASSWORD\r\n");
-						slirp_exit(1);
-					}
-					slirp_socket_passwd = strdup(slirp_socket_passwd);
-				} else {
-					slirp_socket_passwd = strdup(pwd);
-				}
-				
-				if (!port) {
-					lprint("Error: bad port number\n");
-					slirp_exit(1);
-				}
-				
-				if ((hp = gethostbyname(hn)) == NULL) {
-					lprint("Error: bad hostname\n");
-					slirp_exit(1);
-				}
-				slirp_socket_addr = *(u_int32_t *)hp->h_addr;
-				
-				/* Clear the password */
-				memset(*argv, 'X', strlen(*argv));
-			} else {
-				unit = atoi(*argv);
-			}
-			want_link = 1;
-		}
-		slirp_socket_unit = unit;
-		slirp_socket_port = port;
-		
-		ret = -1;
-		if (slirp_socket_passwd) {
-			s = socket(AF_INET, SOCK_STREAM, 0);
-			if (s < 0) {
-				perror("Error: Cannot create socket");
-				slirp_exit(1);
-			}
-			sock_in.sin_family = AF_INET;
-			sock_in.sin_addr.s_addr = slirp_socket_addr;
-			sock_in.sin_port = htons(port);
-			ret = connect(s, (struct sockaddr *)&sock_in, sizeof(sock_in));
-		}
-#ifndef NO_UNIX_SOCKETS
-		  else {
-			s = socket(AF_UNIX, SOCK_STREAM, 0);
-			if (s < 0) {
-				perror("Error: Cannot create socket");
-				slirp_exit(1);
-			}
-			sock_un.sun_family = AF_UNIX;
-			strcpy(sock_un.sun_path, socket_path);
-			ret = connect(s, (struct sockaddr *)&sock_un,
-				      sizeof(sock_un.sun_family) + sizeof(sock_un.sun_path));
-		}
-#endif
-		if (ret == 0) {
-			/* Connected, we either link or die */
-			if (!want_link) {
-				/*
-				 * Ooops, user doesn't want to attach another tty,
-				 * but there's already a slirp running, quit.
-				 */
-				lprint("Error: Slirp is already running\n");
-				slirp_exit(1);
-			}
-			
-			/* Warn the user no more options are parsed */
-			if (argc > 1)
-			   lprint("Warning: all options past -l are ignored\r\n");
-			
-			if (slirp_socket_passwd) {
-				/* Internet connection */
-				sprintf(buff, "%d %d %s", unit, 0, slirp_socket_passwd);
-			}
-#ifndef NO_UNIX_SOCKETS
-			  else {
-				sprintf(buff, "%d %d %s", unit, (int)getpid(), ttyname(0));
-			}
-#endif
-			write(s, buff, strlen(buff)+1);
-			read(s, buff, 256);
-			if (sscanf(buff, "%d %256[^\177]", &unit, buff) != 2) {
-				lprint("Error: buff = %s\n", buff);
-				slirp_exit(1);
-			}
-			if (unit) {
-				/* Succeeded */
-				lprint("Connected: %s\r\n", buff);
-				if (slirp_socket_passwd)
-				   relay(s);
-				else
-				   snooze();
-			} else {
-				/* Failed */
-				lprint("Error:: %s\r\n", buff);
-				slirp_exit(1);
-			}
-			
-			close(s);
-		} else {
-			close(s);
-			
-			/* If we want a link, and it's not unit 0, bail... */
-			if (want_link && unit != 0) {
-				lprint("Error: cannot connect to Slirp socket\r\n");
-				slirp_exit(1);
-			}
-		}
-	}
-	
-	/*
-	 * Setup first modem
-	 */
-    
-	updtime();
-    if (NULL == tty_attach (0, slirp_tty)) {
-         lprint ("Error: tty_attach failed in main.c:main_init()\r\n");
-         slirp_exit (1);
+  /* Get user's name */
+  username = getlogin();
+  if (!username) {
+    struct passwd *pw = getpwuid(getuid());
+    if (pw)
+      username = pw->pw_name;
+    if (!username) {
+      lprint("Error: can't find your username\n");
+      slirp_exit(1);
     }
-    /* Why was this here? ttys->fd = 0; */
-	{
-		struct stat stat;
-		
-		if (isatty(ttys->fd) && fstat(ttys->fd, &stat) == 0) {
-			/* Save the current permissions */
-			ttys->mode = stat.st_mode;
+  }
+  strcpy(buff, "/tmp/");
+  strcat(buff, username);
+  socket_path = strdup(buff);
+#else
+  if ((bptr = (char *)getenv("HOME")) == NULL) {
+    lprint("Error: can't find your HOME\n");
+    slirp_exit(1);
+  }
+  strcpy(buff, bptr);
+  strcat(buff, "/.slirp_socket");
+  socket_path = strdup(buff);
+#endif
+  
+  /* XXX PPP init */
+#ifdef USE_PPP
+  if (gethostname(hostname, MAXNAMELEN) < 0 ) {
+    perror("couldn't get hostname");
+    die(1);
+  }
+  
+  hostname[MAXNAMELEN-1] = 0;
+  
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGALRM);
+  sa.sa_mask = mask;
+  sa.sa_flags = 0;
+  sa.sa_handler = alrm;
+  sigaction(SIGALRM, &sa, NULL);
+#endif	
+  /* Initialise everything */	
+  for (i = 255; i > 2; i--) {
+    close(i);
+  }
+  
+  /*
+   * Check the socket
+   */
+  {
+#ifndef NO_UNIX_SOCKETS
+    struct sockaddr_un sock_un;
+#endif
+    struct sockaddr_in sock_in;
+    int s = -1, unit, port = 0, ret;
+    int want_link = 0;
+    char pwd[256], hn[256];
+    struct hostent *hp;
+    
+    /*
+     * Check if the user wants to "attach" a new session
+     */
+    if (argc >= 3 && argv[1][0] == '-' && argv[1][1] == 'l') {
+      argv += 2; /* Point past -l N */
+      argc -= 2;
+      if (strchr(*argv, ':')) {
+	
+	/* It's an internet socket */
+	if (sscanf(*argv, "%d,%[^:]:%d,%s", &unit, hn, &port, pwd) != 4) {
+	  lprint("Error: bad arguements to -l\n");
+	  slirp_exit(1);
+	}
+	if (strcmp(pwd, "-") == 0) {
+	  /* It's in the environmental variable SLIRP_PASSWORD */
+	  slirp_socket_passwd = (char *)getenv("SLIRP_PASSWORD");
+	  if (slirp_socket_passwd == NULL) {
+	    lprint("Error: no password in environmental variable SLIRP_PASSWORD\r\n");
+	    slirp_exit(1);
+	  }
+	  slirp_socket_passwd = strdup(slirp_socket_passwd);
+	} else {
+	  slirp_socket_passwd = strdup(pwd);
+	}
+	
+	if (!port) {
+	  lprint("Error: bad port number\n");
+	  slirp_exit(1);
+	}
+	
+	if ((hp = gethostbyname(hn)) == NULL) {
+	  lprint("Error: bad hostname\n");
+	  slirp_exit(1);
+	}
+	slirp_socket_addr = *(u_int32_t *)hp->h_addr;
+	
+	/* Clear the password */
+	memset(*argv, 'X', strlen(*argv));
+      } else {
+	unit = atoi(*argv);
+      }
+      want_link = 1;
+    }
+    slirp_socket_unit = unit;
+    slirp_socket_port = port;
+    
+    ret = -1;
+    if (slirp_socket_passwd) {
+      s = socket(AF_INET, SOCK_STREAM, 0);
+      if (s < 0) {
+	perror("Error: Cannot create socket");
+	slirp_exit(1);
+      }
+      sock_in.sin_family = AF_INET;
+      sock_in.sin_addr.s_addr = slirp_socket_addr;
+      sock_in.sin_port = htons(port);
+      ret = connect(s, (struct sockaddr *)&sock_in, sizeof(sock_in));
+    }
+#ifndef NO_UNIX_SOCKETS
+    else {
+      s = socket(AF_UNIX, SOCK_STREAM, 0);
+      if (s < 0) {
+	perror("Error: Cannot create socket");
+	slirp_exit(1);
+      }
+      sock_un.sun_family = AF_UNIX;
+      strcpy(sock_un.sun_path, socket_path);
+      ret = connect(s, (struct sockaddr *)&sock_un,
+		    sizeof(sock_un.sun_family) + sizeof(sock_un.sun_path));
+    }
+#endif
+    if (ret == 0) {
+      /* Connected, we either link or die */
+      if (!want_link) {
+	/*
+	 * Ooops, user doesn't want to attach another tty,
+	 * but there's already a slirp running, quit.
+	 */
+	lprint("Error: Slirp is already running\n");
+	slirp_exit(1);
+      }
+			
+      /* Warn the user no more options are parsed */
+      if (argc > 1)
+	lprint("Warning: all options past -l are ignored\r\n");
+      
+      if (slirp_socket_passwd) {
+	/* Internet connection */
+	sprintf(buff, "%d %d %s", unit, 0, slirp_socket_passwd);
+      }
+#ifndef NO_UNIX_SOCKETS
+      else {
+	sprintf(buff, "%d %d %s", unit, (int)getpid(), ttyname(0));
+      }
+#endif
+      write(s, buff, strlen(buff)+1);
+      read(s, buff, 256);
+      if (sscanf(buff, "%d %256[^\177]", &unit, buff) != 2) {
+	lprint("Error: buff = %s\n", buff);
+	slirp_exit(1);
+      }
+      if (unit) {
+	/* Succeeded */
+	lprint("Connected: %s\r\n", buff);
+	if (slirp_socket_passwd)
+	  relay(s);
+	else
+	  snooze();
+      } else {
+				/* Failed */
+	lprint("Error:: %s\r\n", buff);
+	slirp_exit(1);
+      }
+      
+      close(s);
+    } else {
+      close(s);
+      
+      /* If we want a link, and it's not unit 0, bail... */
+      if (want_link && unit != 0) {
+	lprint("Error: cannot connect to Slirp socket\r\n");
+	slirp_exit(1);
+      }
+    }
+  }
+  
+  /*
+   * Setup first modem
+   */
+  
+  updtime();
+  
+  /* By this time, slirp_tty is NULL or is a string... */
+  if (NULL == tty_attach (0, slirp_tty)) {
+    lprint ("Error: tty_attach failed in main.c:main_init()\r\n");
+    slirp_exit (1);
+  }
+  
+  /* tty_attach in ttys.c takes care of this: ttys->fd = 0; */ 
+  {
+    struct stat stat;
+    
+    if (isatty(ttys->fd) && fstat(ttys->fd, &stat) == 0) {
+      /* Save the current permissions */
+      ttys->mode = stat.st_mode;
 #ifdef HAVE_FCHMOD
-			fchmod(ttys->fd, S_IRUSR|S_IWUSR);
+      fchmod(ttys->fd, S_IRUSR|S_IWUSR);
 #else
-			chmod(ttyname(ttys->fd), S_IRUSR|S_IWUSR);
+      chmod(ttyname(ttys->fd), S_IRUSR|S_IWUSR);
 #endif
-		}
-	}
-	ttys->flags |= TTY_CTTY;
-	term_raw(ttys);
-	
-	/* Initialise everything */
-/*	so_init(); */
-	if_init();
-	ip_init();
-	
-	getouraddr();
-	
-	if ((bptr = (char *)getenv("HOME")) != NULL) {
-		strcpy(buff, bptr);
+    }
+  }
+  ttys->flags |= TTY_CTTY;
+  term_raw(ttys);
+  
+  /* Initialise everything */
+  /*	so_init(); */
+  if_init();
+  ip_init();
+  
+  getouraddr();
+  
+  if ((bptr = (char *)getenv("HOME")) != NULL) {
+    strcpy(buff, bptr);
 #ifdef USE_PPP
-		path_upap = (char *)malloc(strlen(buff) + 15);
-		strcpy(path_upap, buff);
-		strcat(path_upap, "/.pap-secrets");
-		
-		path_chap = (char *)malloc(strlen(buff) + 15);
-		strcpy(path_chap, buff);
-		strcat(path_chap, "/.chap-secrets");
+    path_upap = (char *)malloc(strlen(buff) + 15);
+    strcpy(path_upap, buff);
+    strcat(path_upap, "/.pap-secrets");
+    
+    path_chap = (char *)malloc(strlen(buff) + 15);
+    strcpy(path_chap, buff);
+    strcat(path_chap, "/.chap-secrets");
 #endif
-		strcat(buff, "/.slirprc");
-		config(buff, ttys->unit);
-	}
+    strcat(buff, "/.slirprc");
+    config(buff, ttys->unit);
+  }
 #ifdef USE_PPP
-	else {
-		path_upap = "/.pap-secrets";
-		path_chap = "/.chap-secrets";
-	}
+  else {
+    path_upap = "/.pap-secrets";
+    path_chap = "/.chap-secrets";
+  }
 #endif
-	
-	/* Parse options */
-	cfg_unit = ttys->unit;
-	while(--argc > 0) {
-		int str_len;
-		
-		argv++;
-		
-		i = 0;
-		do {
-			if ((((str_len = strlen(cfg[i].command)) && !strncmp(*argv, cfg[i].command, str_len)) ||
-			     (cfg[i].command_line && (str_len = strlen(cfg[i].command_line)) &&
-			      !strncmp(*argv, cfg[i].command_line, str_len))) &&
-			    (*(*argv+str_len) == ' ' || *(*argv+str_len) == '\t'
-			     || *(*argv+str_len) == 0)) {
+  
+  /* Parse options */
+  cfg_unit = ttys->unit;
+  while(--argc > 0) {
+    int str_len;
+    
+    argv++;
+    
+    i = 0;
+    do {
+      if ((((str_len = strlen(cfg[i].command)) && !strncmp(*argv, cfg[i].command, str_len)) ||
+	   (cfg[i].command_line && (str_len = strlen(cfg[i].command_line)) &&
+	    !strncmp(*argv, cfg[i].command_line, str_len))) &&
+	  (*(*argv+str_len) == ' ' || *(*argv+str_len) == '\t'
+	   || *(*argv+str_len) == 0)) {
 				/* Found it */
-				while (*(*argv+str_len) == ' ' || *(*argv+str_len) == '\t')
-				   str_len++;
-				if (cfg[i].type & PRN_STDERR) {
-					if (**argv == '-' || **argv == '+') {
-						if (cfg[i].flags & CFG_NEEDARG) {
-							if (argc == 1) {
-								lprint("Error: command \"%s\" requires an argument.\r\n",
-								       cfg[i].command_line?cfg[i].command_line:cfg[i].command);
-								break;
-							}
-							argv++;
-							argc--;
-							str_len = 0;
-						}
-					} else if ((cfg[i].flags & CFG_NEEDARG) && *(*argv+str_len) == 0) {
-							lprint("Error: Insufficient arguments to \"%s\".\r\n",
-								cfg[i].command);
-						break;
-					}
-					if ((*cfg[i].func)((*(*argv+str_len)?(*argv+str_len):(char *)0),
-							   (struct socket *)0) == CFG_BADARGS)
-					   lprint("Error: Usage %s %s\r\n", cfg[i].command, cfg[i].usage_args);
-					break;
-				} else {
-					lprint("Error: Command can only be executed in telnet.\r\n");
-					break;
-				}
-			}
-			i++;
-		} while (cfg[i].command);
-		
-		if (!cfg[i].command)
-		   lprint("Error: Invalid option: %s\r\n", *argv);
-	}
-	
-	if (special_addr.s_addr == -1)
-	   inet_aton(CTL_SPECIAL, &special_addr);
-	
-	if (our_addr.s_addr == 0) {
-		lprint("Error:  Slirp Could not determine the address of this host.\r\n");
-		lprint("        Some programs may not work without knowing this address.\r\n");
-		lprint("        It is recommended you use the \"host address aaa.bbb.ccc.ddd\r\n\"");
-		lprint("        option in your ~/.slirprc config file (where aaa.bbb.ccc.ddd\r\n");
-		lprint("        is the IP address of the host Slirp is running on).\r\n\r\n");
+	while (*(*argv+str_len) == ' ' || *(*argv+str_len) == '\t')
+	  str_len++;
+	if (cfg[i].type & PRN_STDERR) {
+	  if (**argv == '-' || **argv == '+') {
+	    if (cfg[i].flags & CFG_NEEDARG) {
+	      if (argc == 1) {
+		lprint("Error: command \"%s\" requires an argument.\r\n",
+		       cfg[i].command_line?cfg[i].command_line:cfg[i].command);
+		break;
+	      }
+	      argv++;
+	      argc--;
+	      str_len = 0;
+	    }
+	  } else if ((cfg[i].flags & CFG_NEEDARG) && *(*argv+str_len) == 0) {
+	    lprint("Error: Insufficient arguments to \"%s\".\r\n",
+		   cfg[i].command);
+	    break;
+	  }
+	  if ((*cfg[i].func)((*(*argv+str_len)?(*argv+str_len):(char *)0),
+			     (struct socket *)0) == CFG_BADARGS)
+	    lprint("Error: Usage %s %s\r\n", cfg[i].command, cfg[i].usage_args);
+	  break;
 	} else {
-		lprint("IP address of Slirp host: %s\r\n", inet_ntoa(our_addr));
+	  lprint("Error: Command can only be executed in telnet.\r\n");
+	  break;
 	}
-	
-	/* Print the DNS */
-	{
-		char buff[512];
-		char buff2[256];
-		FILE *f;
-		int found = 0;
-		struct in_addr tmp_addr;
-		
-		if ((f = fopen("/etc/resolv.conf", "r")) != NULL) {
-			lprint("IP address of your DNS(s): ");
-			while (fgets(buff, 512, f) != NULL) {
-				if (sscanf(buff, "nameserver%*[ \t]%256s", buff2) == 1) {
-					if (!inet_aton(buff2, &tmp_addr))
-					   continue;
-					if (tmp_addr.s_addr == loopback_addr.s_addr)
-					   tmp_addr = our_addr;
-					/* If it's the first one, set it to dns_addr */
-					if (!found)
-						dns_addr = tmp_addr;
-					else
-						lprint(", ");
-					if (++found > 3) {
-						lprint("(more)");
-						break;
-					} else
-						lprint("%s", inet_ntoa(tmp_addr));
-				}
-			}
-			if (found)
-				lprint("\r\n");
-			else {
-				lprint("[none found]\r\n");
-				dns_addr = our_addr; /* ??? */
-			}
-		}
+      }
+      i++;
+    } while (cfg[i].command);
+    
+    if (!cfg[i].command)
+      lprint("Error: Invalid option: %s\r\n", *argv);
+  }
+  
+  if (special_addr.s_addr == -1)
+    inet_aton(CTL_SPECIAL, &special_addr);
+  
+  if (our_addr.s_addr == 0) {
+    lprint("Error:  Slirp Could not determine the address of this host.\r\n");
+    lprint("        Some programs may not work without knowing this address.\r\n");
+    lprint("        It is recommended you use the \"host address aaa.bbb.ccc.ddd\r\n\"");
+    lprint("        option in your ~/.slirprc config file (where aaa.bbb.ccc.ddd\r\n");
+    lprint("        is the IP address of the host Slirp is running on).\r\n\r\n");
+  } else {
+    lprint("IP address of Slirp host: %s\r\n", inet_ntoa(our_addr));
+  }
+  
+  /* Print the DNS */
+  {
+    char buff[512];
+    char buff2[256];
+    FILE *f;
+    int found = 0;
+    struct in_addr tmp_addr;
+    
+    if ((f = fopen("/etc/resolv.conf", "r")) != NULL) {
+      lprint("IP address of your DNS(s): ");
+      while (fgets(buff, 512, f) != NULL) {
+	if (sscanf(buff, "nameserver%*[ \t]%256s", buff2) == 1) {
+	  if (!inet_aton(buff2, &tmp_addr))
+	    continue;
+	  if (tmp_addr.s_addr == loopback_addr.s_addr)
+	    tmp_addr = our_addr;
+	  /* If it's the first one, set it to dns_addr */
+	  if (!found)
+	    dns_addr = tmp_addr;
+	  else
+	    lprint(", ");
+	  if (++found > 3) {
+	    lprint("(more)");
+	    break;
+	  } else
+	    lprint("%s", inet_ntoa(tmp_addr));
 	}
-	
-	lprint("Your address is %s\r\n", CTL_LOCAL);
-	lprint("(or anything else you want)\r\n\r\n");
-	
-	lprint("Type five zeroes (0) to exit.\r\n\r\n");
-	
-	/* Setup exec_list */
-	if (exec_shell) {
-		add_exec(&exec_list, 1, exec_shell, CTL_EXEC, htons(23));
-		free(exec_shell);
-		exec_shell = 0;
-	} else
-		add_exec(&exec_list, 1, "/bin/sh", CTL_EXEC, htons(23));
-
-	add_exec(&exec_list, 0, "slirp.ftpd", CTL_EXEC, htons(21));
+      }
+      if (found)
+	lprint("\r\n");
+      else {
+	lprint("[none found]\r\n");
+	dns_addr = our_addr; /* ??? */
+      }
+    }
+  }
+  
+  lprint("Your address is %s\r\n", CTL_LOCAL);
+  lprint("(or anything else you want)\r\n\r\n");
+  
+  lprint("Type five zeroes (0) to exit.\r\n\r\n");
+  
+  /* Setup exec_list */
+  if (exec_shell) {
+    add_exec(&exec_list, 1, exec_shell, CTL_EXEC, htons(23));
+    free(exec_shell);
+    exec_shell = 0;
+  } else
+    add_exec(&exec_list, 1, "/bin/sh", CTL_EXEC, htons(23));
+  
+  add_exec(&exec_list, 0, "slirp.ftpd", CTL_EXEC, htons(21));
 #ifdef USE_PPP
-	if(ttys->proto == PROTO_SLIP) {
+  if(ttys->proto == PROTO_SLIP) {
 #endif
-		switch(if_comp) {
-		 case IF_COMPRESS:
-			lprint("[talking CSLIP");
-			break;
-		 case IF_AUTOCOMP:
-			lprint("[autodetect SLIP/CSLIP");
-			break;
-		 case IF_NOCOMPRESS:
-			lprint("[talking SLIP");
-			break;
-		}
+    switch(if_comp) {
+    case IF_COMPRESS:
+      lprint("[talking CSLIP");
+      break;
+    case IF_AUTOCOMP:
+      lprint("[autodetect SLIP/CSLIP");
+      break;
+    case IF_NOCOMPRESS:
+      lprint("[talking SLIP");
+      break;
+    }
 #ifndef FULL_BOLT
-		lprint(", MTU %d, MRU %d, %d baud]\r\n\r\n", if_mtu, if_mru, ttys->baud);
+    lprint(", MTU %d, MRU %d, %d baud]\r\n\r\n", if_mtu, if_mru, ttys->baud);
 #else
-		lprint(", MTU %d, MRU %d]\r\n\r\n", if_mtu, if_mru);
+    lprint(", MTU %d, MRU %d]\r\n\r\n", if_mtu, if_mru);
 #endif
 #ifdef USE_PPP
-	} else {
+  } else {
 #ifndef FULL_BOLT
-		lprint("[talking PPP, %d baud]\r\n\r\n", ttys->baud);
+    lprint("[talking PPP, %d baud]\r\n\r\n", ttys->baud);
 #else
-		lprint("[talking PPP]\r\n\r\n");
+    lprint("[talking PPP]\r\n\r\n");
 #endif
-	}
+  }
 #endif
-	
-	lprint("SLiRP Ready ...\r\n");
-	
-	if (lfd) {
-		fprintf(lfd, "End log.\n");
-		fclose(lfd);
-		lfd = 0;
-	}
-	
-	/* Init a few things XXX */
-	last_slowtimo = curtime;
-	time_fasttimo = 0;
-	
-	/* Initialise mbufs *after* setting the MTU */
-	m_init();
-	
-	/* Main_loop init */
-	signal(SIGCHLD, do_wait);
-	signal(SIGHUP, slirp_hup);
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGINT, slirp_exit);
-	signal(SIGQUIT, slirp_exit);
-	signal(SIGTERM, slirp_exit);
-/*	signal(SIGBUS, SIG_IGN); */
-	
-	/* clobber stdout and stderr so fprintf's don't clobber the link */
-	i = open("/dev/null", O_RDWR);
-	dup2(i, 1);
-	dup2(i, 2);
-	if (i > 2)
-	   close(i);
+  
+  lprint("SLiRP Ready ...\r\n");
+  
+  if (lfd) {
+    fprintf(lfd, "End log.\n");
+    fclose(lfd);
+    lfd = 0;
+  }
+  
+  /* Init a few things XXX */
+  last_slowtimo = curtime;
+  time_fasttimo = 0;
+  
+  /* Initialise mbufs *after* setting the MTU */
+  m_init();
+  
+  /* Main_loop init */
+  signal(SIGCHLD, do_wait);
+  signal(SIGHUP, slirp_hup);
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGINT, slirp_exit);
+  signal(SIGQUIT, slirp_exit);
+  signal(SIGTERM, slirp_exit);
+  /*	signal(SIGBUS, SIG_IGN); */
+  
+  /* clobber stdout and stderr so fprintf's don't clobber the link */
+  i = open("/dev/null", O_RDWR);
+  dup2(i, 1);
+  dup2(i, 2);
+  if (i > 2)
+    close(i);
 }
 
 #define CONN_CANFSEND(so) (((so)->so_state & (SS_FCANTSENDMORE|SS_ISFCONNECTED)) == SS_ISFCONNECTED)

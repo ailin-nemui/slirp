@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 1995, Danny Gasparovski
+ * Parts Copyright (c) 2001 Kelly "STrRedWolf" Price
  * 
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
@@ -31,7 +32,7 @@ tty_attach(unit, device)
 	    return 0;
 	memset(ttyp, 0, sizeof(struct ttys));
 	ttyp->next = 0;
-	ttyp->fd = -1;
+	ttyp->fd = 0; /* Default changed from -1 -RedWolf */
 	
 	/* Only open the device if there is one */
 	if (device) {
