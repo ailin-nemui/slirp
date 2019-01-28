@@ -566,6 +566,8 @@ solisten(port, laddr, lport, flags)
 	addr.sin_port = port;
 	
 	if (((s = socket(AF_INET,SOCK_STREAM,0)) < 0) ||
+	    setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(int)),
+	    setsockopt(s,SOL_SOCKET,SO_REUSEPORT,(char *)&opt,sizeof(int)),
 	    (bind(s,(struct sockaddr *)&addr, sizeof(addr)) < 0) ||
 	    (listen(s,1) < 0)) {
 		int tmperrno = errno; /* Don't clobber the real reason we failed */
@@ -576,7 +578,6 @@ solisten(port, laddr, lport, flags)
 		errno = tmperrno;
 		return NULL;
 	}
-	setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(char *)&opt,sizeof(int));
 	setsockopt(s,SOL_SOCKET,SO_OOBINLINE,(char *)&opt,sizeof(int));
 	
 	getsockname(s,(struct sockaddr *)&addr,&addrlen);
