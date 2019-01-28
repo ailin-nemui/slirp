@@ -31,8 +31,16 @@ cd slirp-VERSION/src
 ./configure
 make
 
-Note: if you do not intend to use PPP you can give ./configure the flag
-"--disable-ppp".  This will make a somewhat smaller executable.
+Notes:
+
+    if you do not intend to use PPP you can give ./configure the flag
+    "--disable-ppp".  This will make a somewhat smaller executable.
+
+    if you wish to disable the MS type DNS transfer for PPP, or enable
+    MS DCC functionality, you will need to edit the created Makefile and
+    add/remove the options.
+    By default USE_MS_DNS is enabled, MS_DCC is disabled.
+
 
 That's all there is to it.  If the compilation failed, read "Getting Help"
 below for information on how to get help.
@@ -46,7 +54,7 @@ to make the Slirp executable smaller, but this will also remove any
 debugging information from the executable.
 
 Here are some common ./configure/compiler/pre-processor/etc. problems and
-suggestions for fixing them: 
+suggestions for fixing them:
 
 * "configure: error: can not run test program while cross compiling" (or
 similar errors about cross compiling).  This almost always happens due to an
@@ -74,6 +82,7 @@ kept.  Copy the Slirp executable somewhere in your home directory (E.g.:
 ~/bin) then to run Slirp, you simply type:
 
 ~/bin/slirp
+or ~/bin/slirp -P (for PPP operation)
 
 (or whatever the full path to "slirp" is).  That's it.  Now you activate
 your SLIP/PPP software, and start your applications.
@@ -92,6 +101,9 @@ gap between each.  This will disconnect Slirp from your shell's terminal and
 put Slirp in the background.  Later, you can type "slirp -l 0" to
 "reconnect" Slirp again.  Please read Section 10, "Load-balancing" and
 Section 11, "Link-resumption" of the Slirp manual for more information.
+
+Slirp has lots of options available, so while this will mostly get you
+up and running in the first instance, reading the manual is worthwhile.
 
 
 Files in the Slirp package
@@ -126,7 +138,7 @@ There is also a Newsgroup dedicated to SLIP-emulators called
 alt.dcom.slip-emulators.  You will find lots of discussion about Slirp and
 other "SLIP-emulators".  The FAQ (Frequently Asked Questions) for
 alt.dcom.slip-emulators is included in the "docs" directory, I would suggest
-reading this as well.  
+reading this as well.
 
 The Slirp website (http://slirp.sourceforge.net) has some information
 too.  Go there!
@@ -134,8 +146,8 @@ too.  Go there!
 A mailing list for Slirp development is hosted by SourceForge.
 If you are intrested in pitching in, go ahead and subscribe.
 
-If all else fails, send Kelly, the new maintainer, e-mail at 
-<tygris+slirp@erols.com> with the following information:
+If all else fails, send Kelly, the new maintainer, an e-mail
+with the following information:
 
 * Output of the command "uname -a" on the remote system;
 * Operating System name and version you run on your PC;

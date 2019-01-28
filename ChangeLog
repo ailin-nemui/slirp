@@ -1,3 +1,32 @@
+Version 1.0.16 RELEASE Sept 7, 2004 (RWP)
+From 1.0.14pre1
+- Changes for operation under Cygwin
+- Added patch for Cygwin I_PUSH by Michael Wetherell
+- dns is now transferred to peer, (If compiled with -DUSE_MS_DNS)
+  (Ripped off from hacked pppd version 2.2.0f)
+- Two dns options can be specified on command line, (Only the first
+  is used internally, but both will get transferred to peer)
+- Has a hack for connecting to a MS direct cable connect (If compiled
+  with -DMS_DCC) Only works when PPP (-P option) is chosen, but gives
+  effectively a nat'ed direct cable connect. (A chat script option would
+  be nicer)
+- Fix to exit code that incorrectly iterated list of tty's attached
+- Fixes to terminal restore code, No longer closes stdin on exit
+- If stdout, or stderr are redirected, it wont close them
+  (so you can debug using fprintf(stderr...)
+- No longer removes 0's, 1's from incoming data stream
+- New Option nozeros to not look at strings of 0's, 1's to cause
+  exit/suspend (See docs/CONFIG)
+- Can specify alternate tty on command line using "tty ttydevice"
+  (Overrides SLIRP_TTY environment variable) (see docs/CONFIG)
+- Debug builds log raw incoming data, and ppp checksum fault packets
+- Minor documentation updates
+- Does not close all file handles, (Pain when trying to debug)
+- Can manually turn on early debugging in main()
+- Most of Tims security fixes in place, (It is still insecure...)
+  Probably snprintf will make slirp less portable.
+  (Sorry Tim, I don't like strncpy, so replaced them with a strncpy2)
+
 Version 1.0.13 RELEASE Sept 30, 2000 <Kelly>
 - Added a patch posted on SourceForge to use any arbitrary tty as a port
   instead of the console.

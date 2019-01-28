@@ -5,7 +5,7 @@
 
 version = @version@
 srcdir = @srcdir@
-COMMON_DEFS = @DASH_POSIX@ -I. -I${srcdir} @USE_PPP@ #-DDEBUG
+COMMON_DEFS = @DASH_POSIX@ -I. -I${srcdir} @USE_PPP@ -DUSE_MS_DNS #-DDEBUG -DMS_DCC
 CC = @CC@
 CPP = @CPP@ $(COMMON_DEFS) -DUSE_PPP @CFLAGS@
 CFLAGS = $(COMMON_DEFS) @CFLAGS@ @CFLAGS2@
@@ -84,7 +84,7 @@ release: all
 	rm -f $(OBJ)
 	rm -f config.h config.log config.status \
 		config.cache Makefile
-	rm -f slirp core slirp.core core.slirp
+	rm -f slirp core slirp.core core.slirp slirp.exe
 	rm -f ${srcdir}/*~ ${srcdir}/ppp/*~
 	(cd ${srcdir}/../..; \
 	 tar cvzf slirp-${version}.tar.gz slirp-${version};)

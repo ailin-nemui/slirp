@@ -1,12 +1,13 @@
 /*
  * Copyright (c) 1995 Danny Gasparovski.
- * 
+ *
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
  */
 
 #define WANT_SYS_IOCTL_H
 #include <slirp.h>
+#include <assert.h>
 
 u_int curtime, time_fasttimo, last_slowtimo, detach_time;
 u_int detach_wait = 600000;	/* 10 minutes */
@@ -227,10 +228,13 @@ openpty(amaster, aslave)
 		return -1;
 	}
 	
-	if ((slave = open(ptr, O_RDWR)) < 0 ||
-	    ioctl(slave, I_PUSH, "ptem") < 0 ||
-	    ioctl(slave, I_PUSH, "ldterm") < 0 ||
-	    ioctl(slave, I_PUSH, "ttcompat") < 0) {
+	if ((slave = open(ptr, O_RDWR)) < 0
+#ifdef I_PUSH
+	    || ioctl(slave, I_PUSH, "ptem") < 0
+	    || ioctl(slave, I_PUSH, "ldterm") < 0
+	    || ioctl(slave, I_PUSH, "ttcompat") < 0
+#endif
+	   ) {
 		close(master);
 		close(slave);
 		return -1;
@@ -359,10 +363,10 @@ fork_exec(so, ex, do_pty)
 		
 		if (x_port >= 0) {
 #ifdef HAVE_SETENV
-			sprintf(buff, "%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+			snprintf(buff, sizeof(buff), "%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
 			setenv("DISPLAY", buff, 1);
 #else
-			sprintf(buff, "DISPLAY=%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+			snprintf(buff, sizeof(buff), "DISPLAY=%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
 			putenv(buff);
 #endif
 		}
@@ -390,8 +394,9 @@ fork_exec(so, ex, do_pty)
 			*bptr++ = (char)0;
 			argv[i++] = strdup(curarg);
 		   } while (c);
-		
+
 		argv[i] = 0;
+ 		/* SECURITY TODO: is this safe?  see execlp comment below. */
 		execvp(argv[0], argv);
 		
 		/* Ooops, failed, let's tell the user why */
@@ -442,10 +447,10 @@ strdup(str)
 	const char *str;
 {
 	char *bptr;
-	
+
 	bptr = (char *)malloc(strlen(str)+1);
 	strcpy(bptr, str);
-	
+
 	return bptr;
 }
 #endif
@@ -460,8 +465,9 @@ snooze_hup(num)
 #endif
 	struct sockaddr_in sock_in;
 	char buff[256];
-	
+
 	ret = -1;
+
 	if (slirp_socket_passwd) {
 		s = socket(AF_INET, SOCK_STREAM, 0);
 		if (s < 0)
@@ -471,7 +477,7 @@ snooze_hup(num)
 		sock_in.sin_port = htons(slirp_socket_port);
 		if (connect(s, (struct sockaddr *)&sock_in, sizeof(sock_in)) != 0)
 		   slirp_exit(1); /* just exit...*/
-		sprintf(buff, "kill %s:%d", slirp_socket_passwd, slirp_socket_unit);
+		snprintf(buff, sizeof(buff), "kill %s:%d", slirp_socket_passwd, slirp_socket_unit);
 		write(s, buff, strlen(buff)+1);
 	}
 #ifndef NO_UNIX_SOCKETS
@@ -480,7 +486,7 @@ snooze_hup(num)
 		if (s < 0)
 		   slirp_exit(1);
 		sock_un.sun_family = AF_UNIX;
-		strcpy(sock_un.sun_path, socket_path);
+		strncpy2(sock_un.sun_path, socket_path, sizeof(sock_un.sun_path));
 		if (connect(s, (struct sockaddr *)&sock_un,
 			      sizeof(sock_un.sun_family) + sizeof(sock_un.sun_path)) != 0)
 		   slirp_exit(1);
@@ -490,29 +496,36 @@ snooze_hup(num)
 #endif
 	slirp_exit(0);
 }
-	
-	
+
+
 void
 snooze()
 {
 	sigset_t s;
 	int i;
-	
+    extern int dostats;
+
 	/* Don't need our data anymore */
 	/* XXX This makes SunOS barf */
 /*	brk(0); */
-	
+
 	/* Close all fd's */
 	for (i = 255; i >= 0; i--)
 	   close(i);
-	
+
+    /* in -l x (attached) mode, we are snoozing
+       and will have no stats, so just exit
+    */
+    dostats=0;
+
+
 	signal(SIGQUIT, slirp_exit);
 	signal(SIGHUP, snooze_hup);
 	sigemptyset(&s);
-	
+
 	/* Wait for any signal */
 	sigsuspend(&s);
-	
+
 	/* Just in case ... */
 	exit(255);
 }
@@ -525,16 +538,16 @@ relay(s)
 	int n;
 	fd_set readfds;
 	struct ttys *ttyp;
-	
+
 	/* Don't need our data anymore */
 	/* XXX This makes SunOS barf */
 /*	brk(0); */
-	
+
 	signal(SIGQUIT, slirp_exit);
 	signal(SIGHUP, slirp_exit);
-        signal(SIGINT, slirp_exit);
+    signal(SIGINT, slirp_exit);
 	signal(SIGTERM, slirp_exit);
-	
+
 	/* Fudge to get term_raw and term_restore to work */
 	if (NULL == (ttyp = tty_attach (0, slirp_tty))) {
          lprint ("Error: tty_attach failed in misc.c:relay()\r\n");
@@ -543,18 +556,18 @@ relay(s)
 	ttyp->fd = 0;
 	ttyp->flags |= TTY_CTTY;
 	term_raw(ttyp);
-	
+
 	while (1) {
 		FD_ZERO(&readfds);
-		
+
 		FD_SET(0, &readfds);
 		FD_SET(s, &readfds);
-		
+
 		n = select(s+1, &readfds, (fd_set *)0, (fd_set *)0, (struct timeval *)0);
-		
+
 		if (n <= 0)
 		   slirp_exit(0);
-		
+
 		if (FD_ISSET(0, &readfds)) {
 			n = read(0, buf, 8192);
 			if (n <= 0)
@@ -563,7 +576,7 @@ relay(s)
 			if (n <= 0)
 			   slirp_exit(0);
 		}
-		
+
 		if (FD_ISSET(s, &readfds)) {
 			n = read(s, buf, 8192);
 			if (n <= 0)
@@ -573,7 +586,7 @@ relay(s)
 			   slirp_exit(0);
 		}
 	}
-	
+
 	/* Just in case.... */
 	exit(1);
 }
@@ -589,7 +602,7 @@ lprint(va_alist) va_dcl
 #endif
 {
 	va_list args;
-        
+
 #ifdef __STDC__
         va_start(args, format);
 #else
@@ -605,7 +618,7 @@ lprint(va_alist) va_dcl
 			int deltaw = lprint_sb->sb_wptr - lprint_sb->sb_data;
 			int deltar = lprint_sb->sb_rptr - lprint_sb->sb_data;
 			int deltap = lprint_ptr -         lprint_sb->sb_data;
-			                        
+
 			lprint_sb->sb_data = (char *)realloc(lprint_sb->sb_data,
 							     lprint_sb->sb_datalen + TCP_SNDSPACE);
 			
@@ -881,20 +894,25 @@ rsh_exec(so,ns, user, host, args)
 		/* Set the DISPLAY */
            if (x_port >= 0) {
 #ifdef HAVE_SETENV
-             sprintf(buff, "%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+             snprintf(buff, sizeof(buff), "%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
              setenv("DISPLAY", buff, 1);
 #else
-             sprintf(buff, "DISPLAY=%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+             snprintf(buff, sizeof(buff), "DISPLAY=%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
              putenv(buff);
 #endif
            }
-           
+
            dup2(fd0[1], 0);
            dup2(fd0[1], 1);
            dup2(fd[1], 2);
            for (s = 3; s <= 255; s++)
              close(s);
-           
+
+           /*       SECURITY
+            *       TODO: This type of exec is very dangerous if this process is privileged in any way.
+            *       A user could escalate privileges by subverting the $PATH, and having an rsh
+            *       binary of their own making get executed.
+            */
            execlp("rsh","rsh","-l", user, host, args, NULL);
            
            /* Ooops, failed, let's tell the user why */
@@ -914,3 +932,86 @@ rsh_exec(so,ns, user, host, args)
           return 1;
 	}
 }
+
+/*
+    strncpy2()
+
+    Same as strncpy,
+    except it always zero terminates and stops as soon as it hits the
+    zero.
+
+    Note: If max length is 0, it will write a 0. (Perhaps not correct, but
+    terminated)
+
+    Thanks to apache for the idea.
+*/
+
+char *
+strncpy2(dest, src, length)
+char * dest;
+char * src;
+size_t length;
+{
+
+    char *ptr=dest;
+
+    assert(dest != NULL);
+    assert(src != NULL);
+
+
+    if(!length)
+        length=1;   /* Always puts in terminating 0 */
+
+    while( --length && *src)
+        *ptr++=*src++;
+
+    *ptr='\0';
+    return dest;
+}
+
+
+/*
+    Join 2 strings together
+    using a malloc'ed memory block
+
+    Skips strings if they are null.
+*/
+
+char *
+strjoin(s1, s2)
+char * s1;
+char *s2;
+{
+
+    char * ptr;
+    size_t len1;
+
+    len1 = 0;
+
+    if(s1)
+        len1 += strlen(s1);
+    if(s2)
+        len1 +=  strlen(s2);
+
+    len1++; /* Terminating null */
+
+    ptr = malloc(len1);
+    if(!ptr)
+        return ptr;
+
+    *ptr = '\0';
+
+    if(s1)
+        strcpy(ptr, s1);
+    if(s2)
+        strcat(ptr, s2);
+
+    return ptr;
+}
+
+
+
+
+
+
+

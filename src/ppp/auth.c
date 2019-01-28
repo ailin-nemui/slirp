@@ -118,7 +118,7 @@ static int  null_login __P((int));
 static int  get_upap_passwd __P((void));
 static int  have_upap_secret __P((void));
 static int  have_chap_secret __P((char *, char *));
-static int  scan_authfile __P((FILE *, char *, char *, char *,
+static int  scan_authfile __P((FILE *, char *, char *, char *, int, 
 				  struct wordlist **, char *));
 static void free_wordlist __P((struct wordlist *));
 
@@ -326,9 +326,9 @@ check_auth_options()
 
     /* Default our_name to hostname, and user to our_name */
     if (our_name[0] == 0 || usehostname)
-	strcpy(our_name, hostname);
+	strncpy2(our_name, hostname, sizeof(our_name));
     if (user[0] == 0)
-	strcpy(user, our_name);
+	strncpy2(user, our_name, sizeof(user));
 
     /* If authentication is required, ask peer for CHAP or PAP. */
     if (auth_required && !wo->neg_chap && !wo->neg_upap) {
@@ -410,7 +410,7 @@ check_passwd(unit, auser, userlen, apasswd, passwdlen, msg, msglen)
 
     } else {
 	check_access(f, filename);
-	if (scan_authfile(f, user, our_name, secret, &addrs, filename) < 0
+	if (scan_authfile(f, user, our_name, secret, sizeof(secret), &addrs, filename) < 0
 	    || (secret[0] != 0 && (cryptpap || strcmp(passwd, secret) != 0)
 		&& strcmp(crypt(passwd, secret), secret) != 0)) {
 	    do_syslog(LOG_WARNING, "upap authentication failure for %s", user);
@@ -578,7 +578,7 @@ null_login(unit)
 	return 0;
     check_access(f, filename);
 
-    i = scan_authfile(f, "", our_name, secret, &addrs, filename);
+    i = scan_authfile(f, "", our_name, secret, sizeof(secret), &addrs, filename);
     ret = i >= 0 && (i & NONWILD_CLIENT) != 0 && secret[0] == 0;
 
     if (ret) {
@@ -611,7 +611,7 @@ get_upap_passwd()
     if (f == NULL)
 	return 0;
     check_access(f, filename);
-    if (scan_authfile(f, user, remote_name, secret, NULL, filename) < 0)
+    if (scan_authfile(f, user, remote_name, secret, sizeof(secret), NULL, filename) < 0)
 	return 0;
     strncpy(passwd, secret, MAXSECRETLEN);
     passwd[MAXSECRETLEN-1] = 0;
@@ -635,7 +635,7 @@ have_upap_secret()
     if (f == NULL)
 	return 0;
 
-    ret = scan_authfile(f, NULL, our_name, NULL, NULL, filename);
+    ret = scan_authfile(f, NULL, our_name, NULL, 0, NULL, filename);
     fclose(f);
     if (ret < 0)
 	return 0;
@@ -669,7 +669,7 @@ have_chap_secret(client, server)
     else if (server[0] == 0)
 	server = NULL;
 
-    ret = scan_authfile(f, client, server, NULL, NULL, filename);
+    ret = scan_authfile(f, client, server, NULL, 0, NULL, filename);
     fclose(f);
     if (ret < 0)
 	return 0;
@@ -709,7 +709,7 @@ get_secret(unit, client, server, secret, secret_len, save_addrs)
     }
     check_access(f, filename);
 
-    ret = scan_authfile(f, client, server, secbuf, &addrs, filename);
+    ret = scan_authfile(f, client, server, secbuf, sizeof(secbuf), &addrs, filename);
     fclose(f);
     if (ret < 0)
 	return 0;
@@ -811,11 +811,12 @@ check_access(f, filename)
  * info) are placed in a wordlist and returned in *addrs.  
  */
 static int
-scan_authfile(f, client, server, secret, addrs, filename)
+scan_authfile(f, client, server, secret, max_secret, addrs, filename)
     FILE *f;
     char *client;
     char *server;
     char *secret;
+    int max_secret;
     struct wordlist **addrs;
     char *filename;
 {
@@ -884,7 +885,7 @@ scan_authfile(f, client, server, secret, addrs, filename)
 	 * Special syntax: @filename means read secret from file.
 	 */
 	if (word[0] == '@') {
-	    strcpy(atfile, word+1);
+	    strncpy2(atfile, word+1, sizeof(atfile));
 	    if ((sf = fopen(atfile, "r")) == NULL) {
 		do_syslog(LOG_WARNING, "can't open indirect secret file %s",
 		       atfile);
@@ -899,9 +900,10 @@ scan_authfile(f, client, server, secret, addrs, filename)
 	    }
 	    fclose(sf);
 	}
+
 	if (secret != NULL)
-	    strcpy(secret, word);
-		
+	    strncpy2(secret, word, max_secret);
+
 	best_flag = got_flag;
 
 	/*
@@ -918,6 +920,7 @@ scan_authfile(f, client, server, secret, addrs, filename)
 	    if (ap == NULL)
 		novm("authorized addresses");
 	    ap->next = NULL;
+            /* TODO: check lengths should be ok, alloced correctly above.*/
 	    strcpy(ap->word, word);
 	    if (addr_list == NULL)
 		addr_list = ap;

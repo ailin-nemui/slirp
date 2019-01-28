@@ -7,6 +7,8 @@
 
 #include <slirp.h>
 
+extern int nozeros;
+
 int if_mtu, if_mru;
 int if_comp;
 int if_maxlinkhdr;
@@ -71,12 +73,19 @@ writen(fd, bptr, n)
 {
 	int ret;
 	int total;
-	
+
+    int x;
+    for(x=0;x<n;x++)
+    {
+     DEBUG_MISC((dfd, "OUT: %c %02x\n", iscntrl(bptr[x] & 0xff) ? '.' : bptr[x] & 0xff, bptr[x] & 0xff));
+    }
+
+
 	/* This should succeed most of the time */
 	ret = write(fd, bptr, n);
 	if (ret == n || ret <= 0)
 	   return ret;
-	
+
 	/* Didn't write everything, go into the loop */
 	total = ret;
 	while (n > total) {
@@ -91,9 +100,12 @@ writen(fd, bptr, n)
 /*
  * if_input - read() the tty, do "top level" processing (ie: check for any escapes),
  * and pass onto (*ttyp->if_input)
- * 
- * XXXXX Any zeros arriving by themselves are NOT placed into the arriving packet.
+ *
+ * 0's and 1's arriving by themselves now ARE put into packet processing.
+ * (But still will cause stop/detach)
+ * Had problems with slow links, just losing 0's
  */
+
 #define INBUFF_SIZE 2048 /* XXX */
 void
 if_input(ttyp)
@@ -101,14 +113,14 @@ if_input(ttyp)
 {
 	u_char if_inbuff[INBUFF_SIZE];
 	int if_n;
-	
+
 	DEBUG_CALL("if_input");
 	DEBUG_ARG("ttyp = %lx", (long)ttyp);
-	
+
 	if_n = read(ttyp->fd, (char *)if_inbuff, INBUFF_SIZE);
-	
-	DEBUG_MISC((dfd, " read %d bytes\n", if_n));
-	
+
+	DEBUG_MISC((dfd, " read %d bytes, fd=%d\n", if_n, ttyp->fd));
+
 	if (if_n <= 0) {
 		if (if_n == 0 || (errno != EINTR && errno != EAGAIN)) {
 			if (ttyp->up)
@@ -117,34 +129,77 @@ if_input(ttyp)
 		}
 		return;
 	}
-	if (if_n == 1) {
-		if (*if_inbuff == '0') {
-			ttyp->ones = 0;
-			if (++ttyp->zeros >= 5)
-			   slirp_exit(0);
-			return;
-		}
-		if (*if_inbuff == '1') {
-			ttyp->zeros = 0;
-			if (++ttyp->ones >= 5)
-			   tty_detached(ttyp, 0);
-			return;
-		}
-	}
-	ttyp->ones = ttyp->zeros = 0;
-	
+
+
+#if MS_DCC
+
+
+    /*@@ Hack, should be elsewhere. Chat processing, handle MS DCC */
+
+    if(ttyp->up)
+        ttyp->dccpos=0;
+    else {
+        static char ring[]="CLIENT";
+        static char answer[]="CLIENTSERVER";
+        int idxPos;
+
+        if(ttyp->dccpos < sizeof(ring) && if_n !=0) {
+            for(idxPos=0;idxPos<if_n && ttyp->dccpos < sizeof(ring); idxPos++, ttyp->dccpos++)
+            {
+                if(if_inbuff[idxPos]!=ring[ttyp->dccpos])
+                    ttyp->dccpos=0;
+            }
+            if(ttyp->dccpos >= sizeof(ring)-1) /* Seen ring send CLIENTSERVER back. */
+                {
+                DEBUG_MISC((dfd,"Got Ring\n"));
+                write(ttyp->fd,answer, sizeof(answer)-1);
+                }
+        }
+    }
+#endif
+
+
+#if DEBUG   /* Raw incoming data */
+    if(if_n > 0)
+        {
+        int ax;
+        for(ax=0;ax<if_n ;ax++)
+            DEBUG_MISC((dfd, "IN: %c %02x\n", iscntrl(if_inbuff[ax] & 0xff) ? '.' : if_inbuff[ax], if_inbuff[ax] & 0xff));
+        }
+#endif
+
+    if(!nozeros) {
+        /* Catch 0's and 1's to exit */
+    	if (if_n == 1) {
+    		if (*if_inbuff == '0') {
+    			ttyp->ones = 0;
+    			if (++ttyp->zeros >= 5)
+    			   slirp_exit(0);
+    		} else if (*if_inbuff == '1') {
+    			ttyp->zeros = 0;
+    			if (++ttyp->ones >= 5)
+                {
+    			   tty_detached(ttyp, 0);
+                   return;
+                }
+    		}
+            else ttyp->ones = ttyp->zeros = 0;
+    	}
+        else
+        	ttyp->ones = ttyp->zeros = 0;
+    }
 	(*ttyp->if_input)(ttyp, if_inbuff, if_n);
 }
-	
-	
+
+
 /*
  * if_output: Queue packet into an output queue.
- * There are 2 output queue's, if_fastq and if_batchq. 
+ * There are 2 output queue's, if_fastq and if_batchq.
  * Each output queue is a doubly linked list of double linked lists
  * of mbufs, each list belonging to one "session" (socket).  This
  * way, we can output packets fairly by sending one packet from each
  * session, instead of all the packets from one session, then all packets
- * from the next session, etc.  Packets on the if_fastq get absolute 
+ * from the next session, etc.  Packets on the if_fastq get absolute
  * priority, but if one session hogs the link, it gets "downgraded"
  * to the batchq until it runs out of packets, then it'll return
  * to the fastq (eg. if the user does an ls -alR in a telnet session,

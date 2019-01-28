@@ -51,7 +51,7 @@ extern int	hungup;		/* Physical layer has disconnected */
 extern int	ifunit;		/* Interface unit number */
 extern char	ifname[];	/* Interface name */
 extern int	fd;		/* Serial device file descriptor */
-extern char	hostname[];	/* Our hostname */
+extern char	hostname[MAXNAMELEN];	/* Our hostname */
 extern u_char	outpacket_buf[]; /* Buffer for outgoing packets */
 extern int	phase;		/* Current state of link - see values below */
 extern int	baud_rate;	/* Current link speed in bits/sec */
@@ -63,7 +63,7 @@ extern int	baud_rate;	/* Current link speed in bits/sec */
 extern int	debug;		/* Debug flag */
 extern int	kdebugflag;	/* Tell kernel to print debug messages */
 extern int	default_device;	/* Using /dev/tty or equivalent */
-extern char	devnam[];	/* Device name */
+extern char	devnam[MAXPATHLEN];	/* Device name */
 extern int	crtscts;	/* Use hardware flow control */
 extern int	modem;		/* Use modem control lines */
 extern int	inspeed;	/* Input/Output speed requested */
@@ -72,16 +72,16 @@ extern int	lockflag;	/* Create lock file to lock the serial dev */
 extern int	nodetach;	/* Don't detach from controlling tty */
 extern char	*connector;	/* Script to establish physical link */
 extern char	*disconnector;	/* Script to disestablish physical link */
-extern char	user[];		/* Username for PAP */
-extern char	passwd[];	/* Password for PAP */
+extern char	user[MAXNAMELEN];		/* Username for PAP */
+extern char	passwd[MAXSECRETLEN];	/* Password for PAP */
 extern int	auth_required;	/* Peer is required to authenticate */
 extern int	proxyarp;	/* Set up proxy ARP entry for peer */
 extern int	persist;	/* Reopen link after it goes down */
 extern int	uselogin;	/* Use /etc/passwd for checking PAP */
 extern int	lcp_echo_interval; /* Interval between LCP echo-requests */
 extern int	lcp_echo_fails;	/* Tolerance to unanswered echo-requests */
-extern char	our_name[];	/* Our name for authentication purposes */
-extern char	remote_name[];	/* Peer's name for authentication */
+extern char	our_name[MAXNAMELEN];	/* Our name for authentication purposes */
+extern char	remote_name[MAXNAMELEN];	/* Peer's name for authentication */
 extern int	usehostname;	/* Use hostname for our_name */
 extern int	disable_defaultip; /* Don't use hostname for default IP adrs */
 extern char	*ipparam;	/* Extra parameter for ip up/down scripts */

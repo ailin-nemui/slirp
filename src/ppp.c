@@ -131,8 +131,8 @@ int ppp_exit;			/* Exit when PPP goes down */
 
 
 /*
- * stuff character in the output buffer, escaped if mentioned 
- * in xmit_async_map, and update the check sum				
+ * stuff character in the output buffer, escaped if mentioned
+ * in xmit_async_map, and update the check sum
  */
 void
 stuff_char(c, unit, outp)
@@ -158,7 +158,7 @@ add_fcs(outp, unit)
 	int unit;
 {
        u_short s = outp->fcs;
-    
+
        s ^= 0xffff;
        stuff_char(s & 0xff, unit, outp);
        stuff_char(s >> 8, unit, outp);
@@ -175,21 +175,29 @@ check_fcs(buff, len)
         u_short fcs = PPP_FCS_INIT;
         u_char *c = buff;
         int i;
-                       
+
         for (i = 0; i < len ; i++, c++)
         fcs = (fcs >> 8) ^ fcstab[(fcs ^ *c) & 0xff];
-                                
+
         if (fcs == PPP_FCS_GOOD)
         	return 1;
         else {
 		do_syslog(0, "check_fcs: Checksum error, packet length = %d", len);
+
+        /* Spit out faulty packets when debugging. */
+        if(debug) {
+            for(i=0;i < len ; i++)
+                fprintf(logfile, "%c:%02x ", iscntrl(buff[i]) ? '.' : buff[i] , buff[i] & 0xff);
+            fprintf(logfile, "\n");
+        }
+
 		return 0;
-	}       	
+	}
 }
 
 
 /*
- * IPCP tells us that the link is broken, we're not allowed 
+ * IPCP tells us that the link is broken, we're not allowed
  * pass IP packets
  */
 int
@@ -197,15 +205,15 @@ sifdown(unit)
 	int unit;
 {
 	struct ttys *ttyp = ttys_unit[unit];
-	
+
 	if (!ttyp)
 	   return 0; /* *shrug* */
-	
+
 	ttyp->up = 0;
 	do_syslog(0, "slirppp: PPP is down now");
 	return 1;
 }
-	
+
 /*
  * IPCP says link is open, we can pass IP packets
  */
@@ -214,17 +222,17 @@ sifup (unit)
 	int unit;
 {
 	struct ttys *ttyp = ttys_unit[unit];
-	
+
 	if (!ttyp)
 	   return 0; /* *shrug* */
-	
+
 	ttyp->up = 1;
 	do_syslog(0, "slirppp: PPP is up now");
 	return 1;
 }
-	
 
-/* 
+
+/*
  * configure receive characteristics after negotiations
  * we don't really care about pcomp and accomp, because compression
  * can be directly detected from the incoming packet
@@ -253,7 +261,7 @@ ppp_set_xaccm(unit, accm)
 	memcpy(xmit_async_map[unit], accm, sizeof(accm[0]) * 8);
 	do_syslog(0, "ppp_set_xaccm: extended xmit asyncmap set to %08lx%08lx%08lx%08lx%08lx%08lx%08lx%08lx",
 		  accm[7], accm[6], accm[5], accm[4], accm[3], accm[2], accm[1], accm[0]);
-}        
+}
 
 /*
  * configure our receive characteristic after negotiations
@@ -293,10 +301,10 @@ sifvjcomp (unit, vjcomp, cidcomp, maxcid)
 		do_syslog(0, "sifvjcomp: Using VJ header compression");
 	} else {
 		if_comp &= ~(IF_AUTOCOMP|IF_COMPRESS);
-		if_comp |= IF_NOCOMPRESS;	        
+		if_comp |= IF_NOCOMPRESS;
 		do_syslog(0, "sifvjcomp: Not using VJ header compression");
 	}
-	
+
 	if (cidcomp) {
 		if_comp &= ~IF_NOCIDCOMP;
 	} else {
@@ -318,7 +326,7 @@ doframe(ttyp)
 	int i, unit = ttyp->unit;
 	struct mbuf *m = ttyp->m, *dmp = NULL;
 	int rv;
-        
+
 	if (!check_fcs(mtod(m, u_char *), m->m_len)) {
 		ttyp->sc_flags |= SC_VJ_RESET;
 		ttyp->ifstats.in_errpkts++;
@@ -328,12 +336,12 @@ doframe(ttyp)
 	}
 
 	m->m_len -= 2; /* Drop trailing fcs */
-	
+
 	if (((u_char)m->m_data[0] == ALLSTATIONS) && (u_char)(m->m_data[1] == UI)) {
 		m->m_data += 2;
 		m->m_len -= 2; /* Drop address field */
 	}
-	
+
 	proto = (u_short)*(u_char *)m->m_data++;
 	if (proto & 1) {
 		m->m_len--;
@@ -342,14 +350,14 @@ doframe(ttyp)
 		proto = (proto << 8) | ((u_short)*(u_char *)m->m_data++);
 		m->m_len -= 2; /* Drop protocol field */
 	}
-	
+
 	do_syslog(0, "Received a packet of %d bytes, protocol = 0x%04x",
 		  m->m_len, proto);
-	
+
 	/* XXXXX HACK! */
 	if (m->m_len < 0)
 	   m->m_len = 0;
-	
+
 	/*
 	 * Decompress this packet if necessary, update the receiver's'
 	 * dictionary, or take appropriate action on a CCP packet.
@@ -386,7 +394,7 @@ doframe(ttyp)
 		if (proto == PPP_CCP)
 		   ppp_ccp(ttyp, mtod(m, u_char *), m->m_len, 1);
 	}
-	
+
 	if (ttyp->sc_flags & SC_VJ_RESET) {
 		/*
 		 * XXX This may be inefficient... when the header is NOT
@@ -400,7 +408,7 @@ doframe(ttyp)
 	}
 
 	/*
-	 * Align here because the proto field in PPP will unalign 
+	 * Align here because the proto field in PPP will unalign
 	 * the whole packet, and sl_uncompress_tcp grabs some IP
 	 * fields
 	 */
@@ -410,8 +418,8 @@ doframe(ttyp)
 		    m->m_data, m->m_len);
 		m->m_data -= ((long)m->m_data) & 3;
 	}
-	
-	
+
+
 	switch (proto) {
 	 case PROTO_VJUNCOMP:
 		if (ttyp->up) {
@@ -440,15 +448,15 @@ dump:
 		ttyp->ifstats.in_bytes += m->m_len;
 		ip_input(m);
 		break;
-		
+
 	 default:
-		
+
 		/* If LCP isn't up, and it's not an LCP, dump it */
 		if (proto != PPP_LCP && lcp_fsm[ttyp->unit].state != OPENED) {
 			m_free(m);
 			return;
 		}
-		
+
 		for (i = 0; i < N_PROTO; i++) {
 			if (prottbl[i].protocol == proto) {
 				(*prottbl[i].input)(unit, mtod(m, u_char *), m->m_len);
@@ -464,7 +472,7 @@ free_it:
 				goto free_it;
 			}
 		}
-		
+
 /*		lcp_sprotrej(0, p - PPP_HDRLEN, len + PPP_HDRLEN); */ /* XXXXX */
 		m_free(m);
 		return;
@@ -474,7 +482,7 @@ free_it:
 
 /*
  * the main input routine corresponding to sl_input
- * I tried to make this similar to sl_input, but it was not 
+ * I tried to make this similar to sl_input, but it was not
  * possible to write the unescaped data directly to a mbuf,
  * and therefore this is a bit different
  */
@@ -488,17 +496,23 @@ ppp_input(ttyp, if_bptr, if_n)
 	DEBUG_ARG("ttyp = %lx", (long)ttyp);
 	DEBUG_ARG("if_bptr = %lx", (long)if_bptr);
 	DEBUG_ARG("if_n = %d", if_n);
-	
+
 	for(; if_n; if_bptr++, if_n--) {
 		if (*if_bptr == PPP_FLAG) {
+            DEBUG_MISC((dfd, "ppp_flag"));
 			if (ttyp->inpkt == 0)
+                {
+                DEBUG_MISC((dfd, "not inpkt"));
 			   continue;
+               }
 			if (ttyp->esc) {
 				ttyp->ifstats.in_mbad++;
 				ttyp->mbad = 1;
+                DEBUG_MISC((dfd, "mbad"));
 			}
 			ttyp->m->m_len = (char *)ttyp->mptr - (char *)ttyp->m->m_data;
 			if (!ttyp->mbad) {
+                DEBUG_MISC((dfd, "doframe"))
 				doframe(ttyp);
 			} else {
 				m_free(ttyp->m);
@@ -508,7 +522,7 @@ ppp_input(ttyp, if_bptr, if_n)
 			ttyp->inpkt = 0;
 			continue;
 		}
-		
+
 		/* We fall here if it was not PPP_FLAG */
 		if (ttyp->inpkt == 0) { /* new frame starting */
 			ttyp->inpkt = 1;
@@ -519,9 +533,10 @@ ppp_input(ttyp, if_bptr, if_n)
 			ttyp->esc = 0;
 			ttyp->mbad = 0;
 		}
-		
+
 		if (!ttyp->mbad) {
 			if (*if_bptr == PPP_ESC) {
+                DEBUG_MISC((dfd, "ppp_esc"));
 				ttyp->esc = 1;
 				ttyp->inpkt = 1; /* XXX */
 			} else if (!in_rmap(*if_bptr, ttyp->unit)) {
@@ -530,7 +545,7 @@ ppp_input(ttyp, if_bptr, if_n)
 					ttyp->esc = 0;
 				} else
 					*ttyp->mptr++ = *if_bptr;
-				
+
 				if (--ttyp->msize < 0) {
 					ttyp->ifstats.in_mbad++;
 					ttyp->mbad = 1;             /* frame too long */
@@ -543,9 +558,9 @@ ppp_input(ttyp, if_bptr, if_n)
 
 
 /*
- * this is the output function SLiRP uses, corresponding to sl_encap. 
- * data from a mbuf is encapsulated according to the HDLC-like 
- * framing scheme (RFC-1662) and put to the buffer pointed by inbptr 
+ * this is the output function SLiRP uses, corresponding to sl_encap.
+ * data from a mbuf is encapsulated according to the HDLC-like
+ * framing scheme (RFC-1662) and put to the buffer pointed by inbptr
  * Note: This is only called on PROT_IP packets, all other protocol
  * packets use output()
  */
@@ -562,7 +577,7 @@ ppp_encap(inbptr, m, unit, ppp_esc, proto)
 	struct ppp_out out;
 	struct mbuf *mcomp = NULL;
 	struct ttys *ttyp = ttys_unit[unit];
-	
+
 	DEBUG_CALL("ppp_encap");
 	DEBUG_ARG("inbptr = %lx", (long)inbptr);
 	DEBUG_ARG("m = %lx", (long)m);
@@ -783,7 +798,7 @@ bcmp(s1, s2, n)
 #endif
 
 #ifndef HAVE_GETHOSTID
-long 
+long
 gethostid()
 {
 	return 12345678;
@@ -796,7 +811,7 @@ gethostid()
  * system daemon but a normal user program. This will raise
  * compile warning, because in some environments syslog is
  * defined to return int, and in some others it is void
- */  
+ */
 
 void
 #ifdef __STDC__
@@ -812,11 +827,12 @@ real_do_syslog(va_alist) va_dcl
 #else
 	int priority;
 	char *format;
-	
+
+
 	va_start(argp);
 	priority = va_arg(argp, int);
 	format = va_arg(argp, char *);
-#endif	
+#endif
 	vfprintf(logfile, format, argp);
 	va_end(argp);
 	fprintf(logfile, "\n");

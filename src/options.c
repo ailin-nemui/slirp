@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 1995 Danny Gasparovski.
- * 
+ *
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
  */
@@ -65,6 +65,10 @@ int     cryptpap;               /* Passwords in pap-secrets are encrypted */
 #endif
 
 #endif
+
+
+int     nozeros;                /* If set, 5 0's will not terminate link...*/
+
 
 /*
  * Read the config file
@@ -211,7 +215,7 @@ cfg_redir_x(buff, inso)
 	int screen = 0;
 	int start_port = 0;
 	char *ptr = 0;
-	
+
 	if (buff) {
 		if (strncmp(buff, "start", 5) == 0) {
 			buff += 5;
@@ -249,7 +253,7 @@ cfg_redir_x(buff, inso)
 			}
 		}
 	}
-	
+
 	if (!laddr) {
 		if (inso)
 		   laddr = inso->so_laddr.s_addr;
@@ -611,16 +615,16 @@ cfg_debug(buff, inso)
 	struct socket *inso;
 {
 	int x;
-	
+
 	if (!buff)
 		x = DEBUG_DEFAULT;
 	else {
 		if ((x = atoi(buff)) == 0)
 		   x = DEBUG_DEFAULT;
 	}
-	
+
 	debug_init("slirp_debug", x);
-	
+
 	return CFG_OK;
 }
 
@@ -635,8 +639,8 @@ cfg_logstart(buff, inso)
 	if (!buff) {
 		buff1[0] = 0;
 		if ((bptr = (char *)getenv("HOME")) != NULL)
-		   strcpy(buff1, bptr);
-		strcat(buff1, "/.slirp_start");
+		   strncpy2(buff1, bptr, sizeof(buff1));
+		strncat(buff1, "/.slirp_start", sizeof(buff1));
 		lfd = fopen(buff1, "w");
 		bptr = buff1;
 	} else {
@@ -717,7 +721,7 @@ cfg_help(buff, inso)
 				/* Found a match, print the help */
 				count++;
 				if (cfg[i].command_line)
-				   sprintf(str, "Command-line: %s\r\n", cfg[i].command_line);
+				   snprintf(str, sizeof(str), "Command-line: %s\r\n", cfg[i].command_line);
 				else
 				   str[0] = 0;
 				if (cfg[i].type == CFG_TELNET)
@@ -736,11 +740,11 @@ cfg_help(buff, inso)
 		}
 		lprint("%d match(es) found\r\n", count);
 	}
-	
+
 	/* If it was called from the command-line, exit */
 	if (!inso)
 	   slirp_exit(0);
-	
+
 	return CFG_OK;
 }
 
@@ -847,9 +851,10 @@ cfg_quit(buff, inso)
 	lprint("Goodbye\r\n");
 	tcp_sockclosed(sototcpcb(inso));
 	cfg_quitting = 1;
-	
+
 	return CFG_OK;
 }
+
 
 int
 cfg_pass(buff, inso)
@@ -857,7 +862,7 @@ cfg_pass(buff, inso)
 	struct socket *inso;
 {
 	char *ptr = buff;
-	
+
 	if (ctl_password)
 	   free(ctl_password);
 	while (*ptr) {
@@ -867,9 +872,32 @@ cfg_pass(buff, inso)
 		   ptr++;
 	}
 	ctl_password = strdup(buff);
-	
+
 	return CFG_OK;
 }
+
+int
+cfg_tty(buff, inso)
+    char *buff;
+    struct socket *inso;
+{
+    /* TTY actually set up earlier prior to main options processing
+       (Only usable on command line)
+    */
+	return CFG_OK;
+}
+
+int
+cfg_nozeros(buff, inso)
+    char *buff;
+    struct socket *inso;
+{
+    /* Disable special zero processing
+    */
+    nozeros++;
+	return CFG_OK;
+}
+
 
 int
 cfg_kill(buff, inso)
@@ -877,7 +905,7 @@ cfg_kill(buff, inso)
 	struct socket *inso;
 {
 	cfg_kill_close(atoi(buff), 1);
-	
+
 	return CFG_OK;
 }
 
@@ -887,10 +915,10 @@ cfg_close(buff, inso)
 	struct socket *inso;
 {
 	cfg_kill_close(atoi(buff), 0);
-	
+
 	return CFG_OK;
 }
-	
+
 int
 cfg_exec(buff, inso)
 	char *buff;
@@ -899,7 +927,7 @@ cfg_exec(buff, inso)
 	fork_exec(inso, buff, 0);
 	soisfconnected(inso);
 	inso->so_emu = 0;
-	
+
 	return CFG_OK;
 }
 
@@ -911,7 +939,7 @@ cfg_ptyexec(buff, inso)
 	fork_exec(inso, buff, 1);
 	soisfconnected(inso);
 	inso->so_emu = 0;
-	
+
 	return CFG_OK;
 }
 
@@ -921,7 +949,7 @@ cfg_add_emu(buff, inso)
 	struct socket *inso;
 {
 	add_emu(buff);
-	
+
 	return CFG_OK;
 }
 
@@ -933,50 +961,50 @@ cfg_socket(buff, inso)
 	struct sockaddr_in addr;
 	char pwd[256];
 	int s, port;
-	
+
 	if (!buff) {
 		/* Want unix domain socket */
 #ifndef NO_UNIX_SOCKETS
 		struct sockaddr_un sock_un;
-		
+
 		if (slirp_socket >= 0) {
 			/* Close the old socket */
 			close(slirp_socket);
 			slirp_socket = -1;
 		}
-		
+
 		if (slirp_socket_passwd) {
 			free(slirp_socket_passwd);
 			slirp_socket_passwd = 0;
 		}
-		
+
 		s = socket(AF_UNIX, SOCK_STREAM, 0);
 		if (s < 0) {
 			lprint("Error: socket() failed\r\n");
 			return CFG_ERROR;
 		}
-		
+
 		/* Remove the old socket */
 		(void) unlink(socket_path);
-		
+
 		/* Create a new one */
 		sock_un.sun_family = AF_UNIX;
-		strcpy(sock_un.sun_path, socket_path);
+		strncpy2(sock_un.sun_path, socket_path, sizeof(sock_un.sun_path));
 		if ((bind(s, (struct sockaddr *)&sock_un,
 			  sizeof(sock_un.sun_family) + sizeof(sock_un.sun_path)) < 0) ||
 		    (listen(s, 1) < 0)) {
 			close(s);
 			lprint("Error: %s: %s\r\n", socket_path, strerror(errno));
-			
+
 			return CFG_ERROR;
 		}
-		
+
 		slirp_socket = s;
-		
+
 		return CFG_OK;
 #else
 		lprint("Sorry, your system does not support unix-domain sockets.\r\n");
-		
+
 		return CFG_OK;
 #endif
 	} else {
@@ -986,39 +1014,39 @@ cfg_socket(buff, inso)
 			close(slirp_socket);
 			slirp_socket = -1;
 		}
-		
+
 		if (sscanf(buff, "%d,%s", &port, pwd) != 2) {
 			lprint("Error: bad arguments to \"socket\"\r\n");
 			return CFG_ERROR;
 		}
-		
+
 		s = socket(AF_INET, SOCK_STREAM, 0);
 		if (s < 0) {
 			lprint("Error: socket() failed: %s\r\n", strerror(errno));
 			close(s);
 			return CFG_ERROR;
 		}
-		
+
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = INADDR_ANY;
 		addr.sin_port = htons(port);
-		
+
 		if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			lprint("Error: bind() failed: %s\r\n", strerror(errno));
 			close(s);
 			return CFG_ERROR;
 		}
-		
+
 		listen(s, 1);
-		
+
 		slirp_socket = s;
-		
+
 		if (slirp_socket_passwd) {
 			/* Free old password */
 			free(slirp_socket_passwd);
 		}
 		slirp_socket_passwd = strdup(pwd);
-		
+
 		return CFG_OK;
 	}
 }
@@ -1030,15 +1058,21 @@ cfg_dns(buff, inso)
 	struct socket *inso;
 {
 	struct in_addr tmp_addr;
-	
+
 	if (!inet_aton(buff, &tmp_addr)) {
 		lprint("Error: Bad IP\r\n");
 		return CFG_ERROR;
 	}
-	dns_addr = tmp_addr;
-	
-	lprint("Setting DNS to %s\r\n", buff);
-	
+
+    if(dns_addr.s_addr) {
+        dns2_addr = tmp_addr;
+    	lprint("Setting DNS2 to %s\r\n", buff);
+    }
+    else {
+    	dns_addr = tmp_addr;
+	    lprint("Setting DNS to %s\r\n", buff);
+    }
+
 	return CFG_OK;
 }
 
@@ -1048,7 +1082,7 @@ cfg_keepalive(buff, inso)
 	struct socket *inso;
 {
 	int tmp;
-	
+
 	if (buff) {
 		tmp = atoi(buff);
 		if (tmp < 5*PR_SLOWHZ || tmp > tcp_keepidle) {
@@ -1058,9 +1092,9 @@ cfg_keepalive(buff, inso)
 		tcp_keepintvl = tmp*PR_SLOWHZ;
 	}
 	so_options = 1;
-	
+
 	lprint("Setting keepalive to %d seconds\r\n", tcp_keepintvl/PR_SLOWHZ);
-	
+
 	return CFG_OK;
 }
 
@@ -1070,7 +1104,7 @@ cfg_version(buff, inso)
 	struct socket *inso;
 {
 	lprint("Slirp v%s (%s)\r\n", SLIRP_VERSION, SLIRP_STATUS);
-	
+
 	return CFG_OK;
 }
 
@@ -1080,17 +1114,17 @@ cfg_towrite_max(buff, inso)
 	struct socket *inso;
 {
 	int tmp;
-	
+
 	tmp = atoi(buff);
-	
+
 	if (tmp < 0) {
 		lprint("Error: towrite_max must be positive\r\n");
 		return CFG_ERROR;
 	}
-	
+
 	towrite_max = tmp;
 	lprint("Setting towrite_max to %d\r\n", towrite_max);
-	
+
 	return CFG_OK;
 }
 
@@ -1103,9 +1137,9 @@ cfg_ppp_exit(buff, inso)
 	struct socket *inso;
 {
 	ppp_exit = 1;
-	
+
 	lprint("Slirp will exit when PPP goes down\r\n");
-	
+
 	return CFG_OK;
 }
 
@@ -1116,13 +1150,13 @@ setipdefault(unit)
 	struct hostent *hp;
 	u_int32_t local;
 	ipcp_options *wo = &ipcp_wantoptions[unit];
-	
+
 	/*
 	 * If local IP address already given, don't bother.
 	 */
 	if (wo->ouraddr != 0 || disable_defaultip)
 	   return;
-	
+
 	/*
 	 * Look up our hostname (possibly with domain name appended)
 	 * and take the first IP address as our local IP address.
@@ -1134,7 +1168,7 @@ setipdefault(unit)
 	local = *(u_int32_t *)hp->h_addr;
 	if (local != 0 && !bad_ip_adrs(local))
 	   wo->ouraddr = local;
-	
+
 	return;
 }
 
@@ -1411,7 +1445,7 @@ nomagicnumber(buff, inso)
 {
 	lcp_wantoptions[cfg_unit].neg_magicnumber = 0;
 	lcp_allowoptions[cfg_unit].neg_magicnumber = 0;
-	
+
 	return CFG_OK;
 }
 
@@ -2090,7 +2124,7 @@ struct cfgtab cfg[] = {
 		  "| ptyexec PROGRAM:[ADDRESS:]PORT",
 		  "make slirp execute a program on connection to a specific host/port" },
 	  { "add ptyexec", 0, cfg_add_ptyexec, CFG_ANY, CFG_NEEDARG,
-		  "| exec PROGRAM:[ADDRESS:]PORT", 
+		  "| exec PROGRAM:[ADDRESS:]PORT",
 		  "make slirp execute a program on connection to a specific host/port" },
 	  { "add emu", 0, cfg_add_emu, CFG_ANY, CFG_NEEDARG,
 		  "ftp|irc|none[:lowdelay|throughput] [LPORT:]FPORT",
@@ -2105,7 +2139,7 @@ struct cfgtab cfg[] = {
 		  "[PORT,PASSWORD]",
 		  "bind a socket and listen for other unit connections" },
 	  { "log stats", "-S", cfg_logstats, CFG_CMD_FILE, 0,
-		  "", 
+		  "",
 		  "log statistics to file slirp_stats upon exit" },
 	  { "config", "-f", cfg_config, CFG_CMD_FILE, CFG_NEEDARG,
 		  "FILE",
@@ -2116,7 +2150,7 @@ struct cfgtab cfg[] = {
 	  { "dns", 0, cfg_dns, CFG_ANY, CFG_NEEDARG,
 		  "ADDR",
 		  "set dns address, for 10.0.2.3 as an alias for the real dns" },
-	
+
 	  { "help", 0, cfg_help, CFG_ANY, 0,
 		  "[COMMAND|START_OF_COMMAND]",
 		  "show help on given command" },
@@ -2162,6 +2196,11 @@ struct cfgtab cfg[] = {
 	  { "towrite_max", 0, cfg_towrite_max, CFG_ANY, CFG_NEEDARG,
 		  "NUM",
 		  "set the maximum towrite per tty (see slirp.doc for details)" },
+      { "tty", 0, cfg_tty, CFG_CMD_FILE, CFG_NEEDARG, "TTY",
+        "Configure alternate TTY for slirp to use (Overrides SLIRP_TTY)" },
+      { "nozeros", 0, cfg_nozeros, CFG_CMD_FILE, 0, "",
+        "Disable 5 0's to exit, 5 1's to detach" },
+
 	/* PPP options */
 #ifndef USE_PPP
 	  { "ppp", "-P", cfg_ppp, CFG_CMD_FILE, 0,

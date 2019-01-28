@@ -13,7 +13,7 @@ void sorwakeup _P((struct socket *));
 void sowwakeup _P((struct socket *));
 void soisfconnecting _P((register struct socket *));
 void soisfconnected _P((register struct socket *));
-void sofcantrcvmore _P((struct  socket *));
+void sofcantrcvmore _P((struct socket *));
 void sofcantsendmore _P((struct socket *));
 void soisfdisconnected _P((struct socket *));
 void sofwdrain _P((struct socket *));

@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 1995 Danny Gasparovski.
  * Portions copyright (c) 2000 Kelly Price.
- * 
- * Please read the file COPYRIGHT for the 
+ *
+ * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
  */
 
@@ -18,11 +18,11 @@ int slirp_debug = 0;
 
 extern char *strerror _P((int));
 
-/* Carry over one item from main.c so that the tty's restored. 
+/* Carry over one item from main.c so that the tty's restored.
  * Only done when the tty being used is /dev/tty --RedWolf */
 extern struct termios slirp_tty_settings;
 extern int slirp_tty_restore;
-
+extern int slirp_fdout;
 
 void
 debug_init(file, dbg)
@@ -32,7 +32,7 @@ debug_init(file, dbg)
 	/* Close the old debugging file */
 	if (dfd)
 	   fclose(dfd);
-	
+
 	dfd = fopen(file,"w");
 	if (dfd != NULL) {
 		fprintf(dfd,"Slirp %s - Debugging Started.\n", SLIRP_VERSION);
@@ -266,23 +266,23 @@ mbufstats()
 {
 	struct mbuf *m;
 	int i;
-	
+
         lprint(" \r\n");
-	
+
 	lprint("Mbuf stats:\r\n");
 
 	lprint("  %6d mbufs allocated (%d max)\r\n", mbuf_alloced, mbuf_max);
-	
+
 	i = 0;
-	for (m = m_freelist.m_next; m != &m_freelist; m = m->m_next)
+	for (m = m_freelist.m_next; m && m != &m_freelist; m = m->m_next)
 		i++;
 	lprint("  %6d mbufs on free list\r\n",  i);
-	
+
 	i = 0;
-	for (m = m_usedlist.m_next; m != &m_usedlist; m = m->m_next)
+	for (m = m_usedlist.m_next; m && m != &m_usedlist; m = m->m_next)
 		i++;
 	lprint("  %6d mbufs on used list\r\n",  i);
-        lprint("  %6d mbufs queued as packets\r\n\r\n", if_queued);
+    lprint("  %6d mbufs queued as packets\r\n\r\n", if_queued);
 }
 
 void
@@ -293,13 +293,14 @@ sockstats()
 	struct socket *so;
 
         lprint(" \r\n");
-	
+
 	lprint(
 	   "Proto[state]     Sock     Local Address, Port  Remote Address, Port RecvQ SendQ\r\n");
-			
-	for (so = tcb.so_next; so != &tcb; so = so->so_next) {
-		
-		n = sprintf(buff, "tcp[%s]", so->so_tcpcb?tcpstates[so->so_tcpcb->t_state]:"NONE");
+
+	for (so = tcb.so_next; so && so != &tcb; so = so->so_next) {
+
+		n = snprintf(buff, sizeof(buff), "tcp[%s]",
+				so->so_tcpcb?tcpstates[so->so_tcpcb->t_state]:"NONE");
 		while (n < 17)
 		   buff[n++] = ' ';
 		buff[17] = 0;
@@ -310,10 +311,10 @@ sockstats()
 				inet_ntoa(so->so_faddr), ntohs(so->so_fport),
 				so->so_rcv.sb_cc, so->so_snd.sb_cc);
 	}
-		   
-	for (so = udb.so_next; so != &udb; so = so->so_next) {
-		
-		n = sprintf(buff, "udp[%d sec]", (so->so_expire - curtime) / 1000);
+
+	for (so = udb.so_next; so && so != &udb; so = so->so_next) {
+
+		n = snprintf(buff, sizeof(buff), "udp[%d sec]", (so->so_expire - curtime) / 1000);
 		while (n < 17)
 		   buff[n++] = ' ';
 		buff[17] = 0;
@@ -330,8 +331,8 @@ void
 slirp_exit(exit_status)
 	int exit_status;
 {
-	struct ttys *ttyp;
-	
+	struct ttys *ttyp, *next_ttyp;
+
 	DEBUG_CALL("slirp_exit");
 	DEBUG_ARG("exit_status = %d", exit_status);
 
@@ -340,7 +341,7 @@ slirp_exit(exit_status)
 		if (!dfd)
 		   debug_init("slirp_stats", 0xf);
 		lprint_arg = (char **)&dfd;
-		
+
 		ipstats();
 		tcpstats();
 		udpstats();
@@ -350,19 +351,19 @@ slirp_exit(exit_status)
 		allttystats();
 		vjstats();
 	}
-	
-	for (ttyp = ttys; ttyp; ttyp = ttyp->next)
+
+	for (ttyp = ttys; ttyp;) {
+       next_ttyp = ttyp->next;
 	   tty_detached(ttyp, 1);
-	
+       ttyp=next_ttyp;
+    }
+
 	if (slirp_forked) {
 		/* Menendez time */
 		if (kill(getppid(), SIGQUIT) < 0)
 			lprint("Couldn't kill parent process %ld!\n",
 			    (long) getppid());
     	}
-	
-	/* Restore the terminal if we gotta */
-	if(slirp_tty_restore)
-	  tcsetattr(0,TCSANOW, &slirp_tty_settings);  /* NOW DAMMIT! */
+
 	exit(exit_status);
 }

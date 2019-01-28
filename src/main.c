@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 1995,1996 Danny Gasparovski.
  * Parts Copyright (c) 2000,2001 Kelly "STrRedWolf" Price.
- * 
+ *
  * Please read the file COPYRIGHT for the
  * terms and conditions of the copyright.
  */
@@ -19,7 +19,7 @@ struct ex_list *exec_list = NULL;
  * So lets make it a default and change it all over to what the patch
  * does.
  *
- * Oh, yeah, Slirp likes to set a terminal to raw.  Grumble. 
+ * Oh, yeah, Slirp likes to set a terminal to raw.  Grumble.
  * -RedWolf
  */
 char *slirp_default_tty = "/dev/tty";  /* Ugly constant, but it works */
@@ -27,6 +27,9 @@ struct termios slirp_tty_settings; /* Half the world probably going to kill me. 
 int slirp_tty_restore=0; /* Just incase we default to /dev/tty */
 
 char *slirp_tty=NULL;  /* Make sure this is NULL */
+extern int nozeros;
+
+
 char *exec_shell;
 char *socket_path;
 int do_slowtimo;
@@ -39,7 +42,7 @@ extern void alrm _P((int));
 struct in_addr our_addr;
 struct in_addr ctl_addr;
 struct in_addr special_addr;
-struct in_addr dns_addr;
+struct in_addr dns_addr, dns2_addr;
 struct in_addr loopback_addr;
 
 int link_up;
@@ -65,18 +68,25 @@ main(argc, argv)
 	int argc;
 	char **argv;
 {
+
 	lprint_print = (int (*) _P((void *, const char *, va_list)))vfprintf;
 	lprint_ptr2 = (char *)stderr;
 	lprint_arg = (char **)&lprint_ptr2;
-	
+
 	lprint("Slirp v%s (%s)\n\n", SLIRP_VERSION, SLIRP_STATUS);
-	
+
 	lprint("Copyright (c) 1995,1996 Danny Gasparovski and others.\n");
 	lprint("All rights reserved.\n");
 	lprint("This program is copyrighted, free software.\n");
 	lprint("Please read the file COPYRIGHT that came with the Slirp\n");
 	lprint("package for the terms and conditions of the copyright.\n\n");
-	
+
+
+    /* To enable debugging early, enable the following line,
+       Do NOT use -d -1 on the command line in this case.
+    */
+    /* debug_init("slirp_debug", -1); */
+
 	main_init(argc, argv);
 	main_loop();
 	/* NOTREACHED */
@@ -84,30 +94,56 @@ main(argc, argv)
 }
 
 void
-tty_init (void)
+tty_init (argc, argv)
+    int argc;
+    char **argv;
 {
      char* env_tty;
      size_t env_tty_len;
-     
-     env_tty = getenv ("SLIRP_TTY");
-     if (NULL == env_tty) {
-       /* We're using the terminal, so default to it.
-        * While we're at it, save the terminal. 
-	*/
-       slirp_tty=NULL;  /* Assume nothing */
-       tcgetattr(0,&slirp_tty_settings);
-       slirp_tty_restore++;
-     } else {
-       env_tty_len = strlen (env_tty);
-       slirp_tty = malloc (env_tty_len + 1);
-       if (NULL == slirp_tty) {
-	 lprint ("Error:  Out of memory allocating tty string.\r\n");
-	 slirp_exit (1);
-       }
-       
-       strncpy (slirp_tty, env_tty, env_tty_len);
-       slirp_tty[env_tty_len] = '\000';
-     } 
+
+
+    /* @@Hack, first scan command line for a "tty /dev/ttyS0 type entry,
+       make slirp_tty = that, otherwise use SLIRP_TTY environment.
+       The options code will check that an argument is present for tty,
+       but otherwise ignores it.
+    */
+
+    for(++argv;*argv;++argv)
+    {
+        if((strncmp(*argv, "tty", 3 ) == 0) && isspace((*argv)[3]))
+        {
+            /* Skip whitespace */
+            char *ptr = (*argv)+3;
+            while(isspace(*ptr) && *ptr)
+                ptr++;
+
+            if(*ptr)
+                slirp_tty = strdup(ptr);
+
+            break;
+        }
+     }
+
+     if(slirp_tty == NULL) {
+
+         env_tty = getenv ("SLIRP_TTY");
+         if (NULL == env_tty) {
+           /* We're using the terminal, so default to it.
+            * While we're at it, save the terminal.
+    	*/
+           slirp_tty=NULL;  /* Assume nothing */
+
+         } else {
+           env_tty_len = strlen (env_tty);
+           slirp_tty = malloc (env_tty_len + 1);
+           if (NULL == slirp_tty) {
+    	 lprint ("Error:  Out of memory allocating tty string.\r\n");
+    	 slirp_exit (1);
+           }
+
+           strncpy2 (slirp_tty, env_tty, env_tty_len);
+         }
+     }
 }
 
 void
@@ -122,12 +158,12 @@ main_init(argc, argv)
   sigset_t mask;
   struct sigaction sa;
 #endif
-  
-  tty_init();
+
+  tty_init(argc,argv);
   inet_aton("127.0.0.1", &loopback_addr);
   ctl_addr.s_addr = 0;
   special_addr.s_addr = -1;
-  
+
 #ifdef USE_TMPSOCKET
   /* Get user's name */
   username = getlogin();
@@ -141,39 +177,43 @@ main_init(argc, argv)
     }
   }
   strcpy(buff, "/tmp/");
-  strcat(buff, username);
+  strncat(buff, username, sizeof(buff)-6);
   socket_path = strdup(buff);
 #else
   if ((bptr = (char *)getenv("HOME")) == NULL) {
     lprint("Error: can't find your HOME\n");
     slirp_exit(1);
   }
-  strcpy(buff, bptr);
+  strncpy2(buff, bptr, sizeof(buff) - 15 );
   strcat(buff, "/.slirp_socket");
   socket_path = strdup(buff);
 #endif
-  
+
   /* XXX PPP init */
 #ifdef USE_PPP
   if (gethostname(hostname, MAXNAMELEN) < 0 ) {
     perror("couldn't get hostname");
     die(1);
   }
-  
+
   hostname[MAXNAMELEN-1] = 0;
-  
+
   sigemptyset(&mask);
   sigaddset(&mask, SIGALRM);
   sa.sa_mask = mask;
   sa.sa_flags = 0;
   sa.sa_handler = alrm;
   sigaction(SIGALRM, &sa, NULL);
-#endif	
-  /* Initialise everything */	
+#endif
+  /* Initialise everything */
+/*
+    Main aim of this seems to be to make debugging harder...
+
   for (i = 255; i > 2; i--) {
     close(i);
   }
-  
+*/
+
   /*
    * Check the socket
    */
@@ -186,7 +226,7 @@ main_init(argc, argv)
     int want_link = 0;
     char pwd[256], hn[256];
     struct hostent *hp;
-    
+
     /*
      * Check if the user wants to "attach" a new session
      */
@@ -194,7 +234,7 @@ main_init(argc, argv)
       argv += 2; /* Point past -l N */
       argc -= 2;
       if (strchr(*argv, ':')) {
-	
+
 	/* It's an internet socket */
 	if (sscanf(*argv, "%d,%[^:]:%d,%s", &unit, hn, &port, pwd) != 4) {
 	  lprint("Error: bad arguements to -l\n");
@@ -211,18 +251,18 @@ main_init(argc, argv)
 	} else {
 	  slirp_socket_passwd = strdup(pwd);
 	}
-	
+
 	if (!port) {
 	  lprint("Error: bad port number\n");
 	  slirp_exit(1);
 	}
-	
+
 	if ((hp = gethostbyname(hn)) == NULL) {
 	  lprint("Error: bad hostname\n");
 	  slirp_exit(1);
 	}
 	slirp_socket_addr = *(u_int32_t *)hp->h_addr;
-	
+
 	/* Clear the password */
 	memset(*argv, 'X', strlen(*argv));
       } else {
@@ -232,7 +272,7 @@ main_init(argc, argv)
     }
     slirp_socket_unit = unit;
     slirp_socket_port = port;
-    
+
     ret = -1;
     if (slirp_socket_passwd) {
       s = socket(AF_INET, SOCK_STREAM, 0);
@@ -253,7 +293,10 @@ main_init(argc, argv)
 	slirp_exit(1);
       }
       sock_un.sun_family = AF_UNIX;
-      strcpy(sock_un.sun_path, socket_path);
+
+      strncpy2(sock_un.sun_path, socket_path, sizeof(sock_un.sun_path));
+      sock_un.sun_path[sizeof(sock_un.sun_path)-1]='\0';
+
       ret = connect(s, (struct sockaddr *)&sock_un,
 		    sizeof(sock_un.sun_family) + sizeof(sock_un.sun_path));
     }
@@ -268,18 +311,18 @@ main_init(argc, argv)
 	lprint("Error: Slirp is already running\n");
 	slirp_exit(1);
       }
-			
+
       /* Warn the user no more options are parsed */
       if (argc > 1)
 	lprint("Warning: all options past -l are ignored\r\n");
-      
+
       if (slirp_socket_passwd) {
 	/* Internet connection */
-	sprintf(buff, "%d %d %s", unit, 0, slirp_socket_passwd);
+	snprintf(buff, sizeof(buff), "%d %d %s", unit, 0, slirp_socket_passwd);
       }
 #ifndef NO_UNIX_SOCKETS
       else {
-	sprintf(buff, "%d %d %s", unit, (int)getpid(), ttyname(0));
+	snprintf(buff, sizeof(buff), "%d %d %s", unit, (int)getpid(), ttyname(0));
       }
 #endif
       write(s, buff, strlen(buff)+1);
@@ -300,11 +343,11 @@ main_init(argc, argv)
 	lprint("Error:: %s\r\n", buff);
 	slirp_exit(1);
       }
-      
+
       close(s);
     } else {
       close(s);
-      
+
       /* If we want a link, and it's not unit 0, bail... */
       if (want_link && unit != 0) {
 	lprint("Error: cannot connect to Slirp socket\r\n");
@@ -312,23 +355,23 @@ main_init(argc, argv)
       }
     }
   }
-  
+
   /*
    * Setup first modem
    */
-  
+
   updtime();
-  
+
   /* By this time, slirp_tty is NULL or is a string... */
   if (NULL == tty_attach (0, slirp_tty)) {
     lprint ("Error: tty_attach failed in main.c:main_init()\r\n");
     slirp_exit (1);
   }
-  
-  /* tty_attach in ttys.c takes care of this: ttys->fd = 0; */ 
+
+  /* tty_attach in ttys.c takes care of this: ttys->fd = 0; */
   {
     struct stat stat;
-    
+
     if (isatty(ttys->fd) && fstat(ttys->fd, &stat) == 0) {
       /* Save the current permissions */
       ttys->mode = stat.st_mode;
@@ -340,27 +383,22 @@ main_init(argc, argv)
     }
   }
   ttys->flags |= TTY_CTTY;
-  term_raw(ttys);
-  
+
   /* Initialise everything */
   /*	so_init(); */
   if_init();
   ip_init();
-  
+
   getouraddr();
-  
+
   if ((bptr = (char *)getenv("HOME")) != NULL) {
-    strcpy(buff, bptr);
+    strncpy2(buff, bptr, sizeof(buff)-11);
 #ifdef USE_PPP
-    path_upap = (char *)malloc(strlen(buff) + 15);
-    strcpy(path_upap, buff);
-    strcat(path_upap, "/.pap-secrets");
-    
-    path_chap = (char *)malloc(strlen(buff) + 15);
-    strcpy(path_chap, buff);
-    strcat(path_chap, "/.chap-secrets");
+    path_upap=strjoin(buff, "/.pap-secrets");
+    path_chap = strjoin(buff, "/.chap-secrets");
+
 #endif
-    strcat(buff, "/.slirprc");
+    strncat(buff, "/.slirprc", sizeof(buff));
     config(buff, ttys->unit);
   }
 #ifdef USE_PPP
@@ -369,14 +407,14 @@ main_init(argc, argv)
     path_chap = "/.chap-secrets";
   }
 #endif
-  
+
   /* Parse options */
   cfg_unit = ttys->unit;
   while(--argc > 0) {
     int str_len;
-    
+
     argv++;
-    
+
     i = 0;
     do {
       if ((((str_len = strlen(cfg[i].command)) && !strncmp(*argv, cfg[i].command, str_len)) ||
@@ -415,14 +453,14 @@ main_init(argc, argv)
       }
       i++;
     } while (cfg[i].command);
-    
+
     if (!cfg[i].command)
       lprint("Error: Invalid option: %s\r\n", *argv);
   }
-  
+
   if (special_addr.s_addr == -1)
     inet_aton(CTL_SPECIAL, &special_addr);
-  
+
   if (our_addr.s_addr == 0) {
     lprint("Error:  Slirp Could not determine the address of this host.\r\n");
     lprint("        Some programs may not work without knowing this address.\r\n");
@@ -432,7 +470,7 @@ main_init(argc, argv)
   } else {
     lprint("IP address of Slirp host: %s\r\n", inet_ntoa(our_addr));
   }
-  
+
   /* Print the DNS */
   {
     char buff[512];
@@ -440,41 +478,57 @@ main_init(argc, argv)
     FILE *f;
     int found = 0;
     struct in_addr tmp_addr;
-    
-    if ((f = fopen("/etc/resolv.conf", "r")) != NULL) {
-      lprint("IP address of your DNS(s): ");
-      while (fgets(buff, 512, f) != NULL) {
-	if (sscanf(buff, "nameserver%*[ \t]%256s", buff2) == 1) {
-	  if (!inet_aton(buff2, &tmp_addr))
-	    continue;
-	  if (tmp_addr.s_addr == loopback_addr.s_addr)
-	    tmp_addr = our_addr;
-	  /* If it's the first one, set it to dns_addr */
-	  if (!found)
-	    dns_addr = tmp_addr;
-	  else
-	    lprint(", ");
-	  if (++found > 3) {
-	    lprint("(more)");
-	    break;
-	  } else
-	    lprint("%s", inet_ntoa(tmp_addr));
-	}
+
+    if(dns_addr.s_addr) /* Set up on command line perhaps. */
+    {
+        lprint("IP address of your DNS(s): %s", inet_ntoa(dns_addr));
+        if(dns2_addr.s_addr)
+            lprint(", %s", inet_ntoa(dns2_addr));
+        lprint("\r\n");
+    }
+    else
+    {
+        if ((f = fopen("/etc/resolv.conf", "r")) != NULL) {
+            lprint("IP address of your DNS(s): ");
+            while (fgets(buff, 512, f) != NULL) {
+    	if (sscanf(buff, "nameserver%*[ \t]%256s", buff2) == 1) {
+            if (!inet_aton(buff2, &tmp_addr))
+    	        continue;
+    	    if (tmp_addr.s_addr == loopback_addr.s_addr)
+    	        tmp_addr = our_addr;
+    	  /* If it's the first one, set it to dns_addr */
+    	  if (!found)
+    	    dns_addr = tmp_addr;
+    	  else {
+    	    lprint(", ");
+            if(!dns2_addr.s_addr)   /* Secondary dns */
+              dns2_addr = tmp_addr;
+          }
+
+    	  if (++found > 3) {
+    	    lprint("(more)");
+    	    break;
+    	  } else
+    	    lprint("%s", inet_ntoa(tmp_addr));
+    	  }
+        }
       }
       if (found)
 	lprint("\r\n");
       else {
-	lprint("[none found]\r\n");
-	dns_addr = our_addr; /* ??? */
+       	lprint("[none found]\r\n");
+       	dns_addr = our_addr; /* ??? */
+
       }
     }
   }
-  
+
   lprint("Your address is %s\r\n", CTL_LOCAL);
   lprint("(or anything else you want)\r\n\r\n");
-  
-  lprint("Type five zeroes (0) to exit.\r\n\r\n");
-  
+
+  if(!nozeros)
+      lprint("Type five zeroes (0) to exit.\r\n\r\n");
+
   /* Setup exec_list */
   if (exec_shell) {
     add_exec(&exec_list, 1, exec_shell, CTL_EXEC, htons(23));
@@ -482,7 +536,7 @@ main_init(argc, argv)
     exec_shell = 0;
   } else
     add_exec(&exec_list, 1, "/bin/sh", CTL_EXEC, htons(23));
-  
+
   add_exec(&exec_list, 0, "slirp.ftpd", CTL_EXEC, htons(21));
 #ifdef USE_PPP
   if(ttys->proto == PROTO_SLIP) {
@@ -512,38 +566,85 @@ main_init(argc, argv)
 #endif
   }
 #endif
-  
+
   lprint("SLiRP Ready ...\r\n");
-  
+
   if (lfd) {
     fprintf(lfd, "End log.\n");
     fclose(lfd);
     lfd = 0;
   }
-  
+
   /* Init a few things XXX */
   last_slowtimo = curtime;
   time_fasttimo = 0;
-  
+
   /* Initialise mbufs *after* setting the MTU */
   m_init();
-  
+
   /* Main_loop init */
+
   signal(SIGCHLD, do_wait);
   signal(SIGHUP, slirp_hup);
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, slirp_exit);
   signal(SIGQUIT, slirp_exit);
   signal(SIGTERM, slirp_exit);
+
   /*	signal(SIGBUS, SIG_IGN); */
-  
-  /* clobber stdout and stderr so fprintf's don't clobber the link */
+
+  /* clobber stdout and stderr so fprintf's don't clobber the link,
+
+     **Updates**
+
+     If stderr or stdout are not going to the same place as
+     the ppp data will go too/come from (eg slirp_tty, or stdin)
+     keep it open.
+
+     Mainly for testing purposes, nice to be able to do fprintf(stderr...
+  */
+
+  {
+  int blnKeepErr, blnKeepStdOut;
+
+  /* stderr going elsewhere ?? */
+  blnKeepErr = FALSE;
+
+  if(!isatty(2))
+    blnKeepErr = TRUE;
+  else {
+    if((slirp_tty == NULL && strcmp(ttyname(0), ttyname(2)) == 0) ||
+       (slirp_tty != NULL && strcmp(ttyname(2), slirp_tty) == 0) )
+        blnKeepErr = FALSE;
+    else
+        blnKeepErr = TRUE;
+    }
+
+
+  /* stdout going elsewhere ?? */
+  blnKeepStdOut = FALSE;
+  if(!isatty(1))
+    blnKeepStdOut = TRUE;
+  else {
+    if((slirp_tty == NULL && strcmp(ttyname(0), ttyname(1)) == 0) ||
+       (slirp_tty != NULL && strcmp(ttyname(1), slirp_tty) == 0) )
+        blnKeepStdOut = FALSE;
+    else
+        blnKeepStdOut = TRUE;
+    }
+
   i = open("/dev/null", O_RDWR);
-  dup2(i, 1);
-  dup2(i, 2);
+
+  if(!blnKeepStdOut)
+    dup2(i, 1);
+  if(!blnKeepErr)
+    dup2(i, 2);
   if (i > 2)
     close(i);
+  }
+
 }
+
 
 #define CONN_CANFSEND(so) (((so)->so_state & (SS_FCANTSENDMORE|SS_ISFCONNECTED)) == SS_ISFCONNECTED)
 #define CONN_CANFRCV(so) (((so)->so_state & (SS_FCANTRCVMORE|SS_ISFCONNECTED)) == SS_ISFCONNECTED)
@@ -557,19 +658,19 @@ main_loop()
 	struct socket *so, *so_next;
 	struct timeval timeout;
 	int ret, nfds;
-	struct ttys *ttyp;
+	struct ttys *ttyp, *ttyp2;
 #ifndef FULL_BOLT
 	int best_time;
 #endif
 	int tmp_time;
-	
+
 while(1) {
-	
+
 	FD_ZERO(&readfds);
 	FD_ZERO(&writefds);
 	FD_ZERO(&xfds);
 	nfds = 0;
-	
+
 	/*
 	 * Always set modems for reading.
 	 */
@@ -580,7 +681,7 @@ while(1) {
 			ctty_closed = 0;
 			continue;
 		}
-		
+
 		if (ttyp->up)
 		   link_up++;
 #ifdef USE_PPP
@@ -589,7 +690,7 @@ while(1) {
 			ttyp->flags &= ~TTY_PPPSTART;
 		}
 #endif
-		
+
 #ifdef FULL_BOLT
 		if ((ttyp->up && if_queued) || ttyp->nbuff) {
 			FD_SET(ttyp->fd, &writefds);
@@ -599,7 +700,7 @@ while(1) {
 		FD_SET(ttyp->fd, &readfds);
 		UPD_NFDS(ttyp->fd);
 	}
-	
+
 	/*
 	 * Set unix socket for reading if it exists
 	 */
@@ -609,7 +710,7 @@ while(1) {
 			FD_SET(slirp_socket, &readfds);
 			UPD_NFDS(slirp_socket);
 		}
-		
+
 		/*
 		 * If there are no active tty's, make sure we don't
 		 * hang around more than 10 minutes
@@ -617,35 +718,35 @@ while(1) {
 		if (!ttys && ((curtime - detach_time) >= detach_wait))
 		   slirp_exit(0);
 	}
-	
+
 	/*
 	 * First, TCP sockets
 	 */
 	do_slowtimo = 0;
 	if (link_up) {
-		/* 
+		/*
 		 * *_slowtimo needs calling if there are IP fragments
 		 * in the fragment queue, or there are TCP connections active
 		 */
 		do_slowtimo = ((tcb.so_next != &tcb) ||
 			       ((struct ipasfrag *)&ipq != (struct ipasfrag *)ipq.next));
-		
+
 		for (so = tcb.so_next; so != &tcb; so = so_next) {
 			so_next = so->so_next;
-			
+
 			/*
 			 * See if we need a tcp_fasttimo
 			 */
 			if (time_fasttimo == 0 && so->so_tcpcb->t_flags & TF_DELACK)
 			   time_fasttimo = curtime; /* Flag when we want a fasttimo */
-			
+
 			/*
 			 * NOFDREF can include still connecting to local-host,
 			 * newly socreated() sockets etc. Don't want to select these.
 	 		 */
 			if (so->so_state & SS_NOFDREF || so->s == -1)
 			   continue;
-			
+
 			/*
 			 * Set for reading sockets which are accepting
 			 */
@@ -654,7 +755,7 @@ while(1) {
 				UPD_NFDS(so->s);
 				continue;
 			}
-			
+
 			/*
 			 * Set for writing sockets which are connecting
 			 */
@@ -663,7 +764,7 @@ while(1) {
 				UPD_NFDS(so->s);
 				continue;
 			}
-			
+
 			/*
 			 * Set for writing if we are connected, can send more, and
 			 * we have something to send
@@ -672,7 +773,7 @@ while(1) {
 				FD_SET(so->s, &writefds);
 				UPD_NFDS(so->s);
 			}
-			
+
 			/*
 			 * Set for reading (and urgent data) if we are connected, can
 			 * receive more, and we have room for it XXX /2 ?
@@ -683,13 +784,13 @@ while(1) {
 				UPD_NFDS(so->s);
 			}
 		}
-		
+
 		/*
 		 * UDP sockets
 		 */
 		for (so = udb.so_next; so != &udb; so = so_next) {
 			so_next = so->so_next;
-			
+
 			/*
 			 * See if it's timed out
 			 */
@@ -700,7 +801,7 @@ while(1) {
 				} else
 					do_slowtimo = 1; /* Let socket expire */
 			}
-			
+
 			/*
 			 * When UDP packets are received from over the
 			 * link, they're sendto()'d straight away, so
@@ -717,12 +818,12 @@ while(1) {
 			}
 		}
 	}
-	
+
 	/*
 	 * Setup timeout to use minimum CPU usage, especially when idle
 	 */
-	
-	/* 
+
+	/*
 	 * First, see the timeout needed by *timo
 	 */
 	timeout.tv_sec = 0;
@@ -739,19 +840,19 @@ while(1) {
 		   timeout.tv_usec = 0;
 		else if (timeout.tv_usec > 510000)
 		   timeout.tv_usec = 510000;
-		
+
 		/* Can only fasttimo if we also slowtimo */
 		if (time_fasttimo) {
 			tmp_time = (200 - (curtime - time_fasttimo)) * 1000;
 			if (tmp_time < 0)
 			   tmp_time = 0;
-			
+
 			/* Choose the smallest of the 2 */
 			if (tmp_time < timeout.tv_usec)
 			   timeout.tv_usec = (u_int)tmp_time;
 		}
 	}
-	
+
 #ifndef FULL_BOLT
 	/*
 	 * Find the timeout such that we can then write to a modem
@@ -784,7 +885,7 @@ while(1) {
 				}
 			}
 		}
-		
+
 		/*
 		 * Adjust the timeout to make the minimum timeout
 		 * 50ms (XXX?) to lessen the CPU load
@@ -801,7 +902,7 @@ cont_1:
 	 */
 	if ((timeout.tv_usec < 0) || (tmp_time >= 0 && tmp_time < timeout.tv_usec))
 		timeout.tv_usec = (u_int)tmp_time;
-#endif	
+#endif
 	DEBUG_MISC((dfd, " timeout.tv_usec = %u",
 		    (u_int)timeout.tv_usec));
 	if (time_fasttimo) {
@@ -809,11 +910,11 @@ cont_1:
 	} else {
 		DEBUG_MISC((dfd, "\n"));
 	}
-	
+
 	/*
-	 * Do the real select call 
+	 * Do the real select call
 	 */
-	
+
 	/*
 	 * If we're told to "wait forever", wait for 5 seconds
 	 * This will make timings (like idle timer and "wait" timer)
@@ -823,20 +924,20 @@ cont_1:
 		timeout.tv_usec = 0;
 		timeout.tv_sec = 5; /* XXX */
 	}
-	
+
 	ret = select(nfds+1, &readfds, &writefds, &xfds, &timeout);
-	
+
 	if (ret < 0) {
 		if (errno == EINTR)
 		   continue;
 		slirp_exit(1);
 	}
-	
+
 	/* Update time */
 	updtime();
-	
+
 	/*
-	 * See if anything has timed out 
+	 * See if anything has timed out
 	 */
 	if (link_up) {
 		if (time_fasttimo && ((curtime - time_fasttimo) >= 199)) {
@@ -849,7 +950,7 @@ cont_1:
 			last_slowtimo = curtime;
 		}
 	}
-	
+
 	/*
 	 * Check if there are any tty's attaching
 	 */
@@ -865,7 +966,7 @@ cont_1:
 #endif
 		struct sockaddr_in sock_in;
 		int sock_len2 = sizeof(struct sockaddr_in);
-		
+
 		fd = -1;
 		if (slirp_socket_passwd)
 		   fd = accept(slirp_socket, (struct sockaddr *)&sock_in, &sock_len2);
@@ -878,12 +979,12 @@ cont_1:
 			 * This shouldn't happen, but if it does, something's
 			 * amiss, so we nuke the socket so that we don't enter
 	 		 * a tight loop of failure to accept() the socket
+             *
 			 */
-			close(slirp_socket);
-			slirp_socket = -1;
-			goto failed;
+       		slirp_socket = -1;
+		    goto failed;
 		}
-		
+
 		/*
 		 * Some maniac could telnet to this port and stall Slirp forever.
 		 * So, we make the socket non-blocking and wait a second.  If the message
@@ -909,7 +1010,7 @@ cont_1:
 		}
 		/* XXX Make it blocking again? */
 		fd_block(fd);
-		
+
 		if (sscanf(buff, "%d %d %256s", &unit, &pid, device) == 3) {
 			if (unit >= MAX_INTERFACES || unit < 0) {
 				sprintf(buff, "0 Unit out of range (must be between 0 and %d, inclusive)", MAX_INTERFACES-1);
@@ -918,7 +1019,7 @@ cont_1:
 				close(fd);
 				goto failed;
 			}
-			
+
 			/* Socket is an internet socket and the device is the password
 			 * (pid is invalid) */
 			if (slirp_socket_passwd) {
@@ -932,7 +1033,7 @@ cont_1:
 					device = 0; /* Make tty_attach not open a device */
 				}
 			}
-			
+
 			/*
 			 * Check that unit is not already taken,
 			 * and it's valid
@@ -941,7 +1042,7 @@ cont_1:
 				if (ttyp->unit == unit)
 				   break;
 			}
-			
+
 			/*
 			 * Reply is of the form "<N> <MESSAGE>" where N is 0 for
 			 * failure, 1 for exit, and message is printed
@@ -953,7 +1054,7 @@ cont_1:
 				close(fd);
 				goto failed;
 			}
-			
+
 			ttyp = tty_attach(unit, device);
 			if (ttyp) {
 #ifdef USE_PPP
@@ -963,11 +1064,11 @@ cont_1:
 #endif
 				   sprintf(buff2, "SLIP, MTU %d, MRU %d", if_mtu, if_mru);
 #ifndef FULL_BOLT
-				sprintf(buff,
+				snprintf(buff, sizeof(buff),
 					"1 Attached as unit %d, device %s\r\n\r\n[talking %s, %d baud]\r\n\r\nSLiRP Ready ...",
 					unit, device?device:"(socket)", buff2, ttyp->baud);
 #else
-				sprintf(buff,
+				snprintf(buff, sizeof(buff)
 					"1 Attached as unit %d, device %s\r\n\r\n[talking %s]\r\n\r\nSLiRP Ready ...",
 					unit, device, buff2);
 #endif
@@ -975,7 +1076,7 @@ cont_1:
 				if (!slirp_socket_passwd) {
 					close(fd);
 				}
-				
+
 				ttyp->pid = pid;
 				if (slirp_socket_passwd) {
 					/* Internet socket, don't close fd */
@@ -988,7 +1089,7 @@ cont_1:
 				close(fd);
 				goto failed;
 			}
-			
+
 		} else if (sscanf(buff, "kill %[^:]:%d", device, &unit) == 2) {
 			if (slirp_socket_passwd) {
 				if (strcmp(slirp_socket_passwd, device) != 0) {
@@ -997,7 +1098,7 @@ cont_1:
 					goto failed;
 				}
 			}
-			
+
 			for (ttyp = ttys; ttyp; ttyp = ttyp->next) {
 				if (ttyp->unit == unit) {
 					tty_detached(ttyp, 0);
@@ -1013,17 +1114,22 @@ cont_1:
 		}
 	}
 failed:
-	
+
 	/*
 	 * Check if a tty is ready for reading [or writing]
 	 */
-	for (ttyp = ttys; ttyp; ttyp = ttyp->next) {
+	for (ttyp = ttys; ttyp; ttyp = ttyp2) {
+        ttyp2 = ttyp->next;     /* Just in case if_input removes it from under us */
+        DEBUG_ARG("hunting ttyp=%lx", (long) ttyp);
+
 		if (FD_ISSET(ttyp->fd, &readfds))
 		   if_input(ttyp);
 #ifdef FULL_BOLT
 		if (FD_ISSET(ttyp->fd, &writefds))
 		   if_start(ttyp);
 #endif
+        /* ttyp may not be valid here, if_input() may have had it deleted... */
+
 	}
 	
 	/*

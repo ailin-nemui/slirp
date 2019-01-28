@@ -22,7 +22,7 @@ struct ttys {
 	int unit;		/* Unit number of this ttys */
 	int proto;		/* Protocol used */
 	int up;			/* Is the interface up? */
-	
+
 	int fd;			/* File Descriptor */
 	int pid;		/* PID of the "guardian", if any */
 
@@ -34,10 +34,9 @@ struct ttys {
 #else
 	int towrite;		/* towrite for this tty */
 #endif
-	
+
 	int zeros;		/* Number of '0's typed */
 	int ones;		/* Number of '1's typed */
-	
 	struct mbuf *m;		/* Input mbuf for this tty */
 	int msize;		/* Size of the above */
 	u_char *mptr;		/* Ptr to the above */
@@ -48,19 +47,19 @@ struct ttys {
 #ifndef FULL_BOLT
 	int baud;		/* Baudrate */
 	int bytesps;		/* Bytes per second */
-#endif	
+#endif
 
 	u_int lastime;		/* for updtime() */
-	
+
 	struct termios oldterm;	/* Old termios for the tty */
 	mode_t mode;
-	
+
 	struct slirp_ifstats ifstats;	/* Interface statistics */
-	
+
 	u_int flags;		/* Misc flags, see below */
 	void (*if_input) _P((struct ttys *, u_char *, int)); /* packet decapsulation and dispatch */
 	int (*if_encap) _P((char *, struct mbuf *, int, int, int)); /* packet encapsulation routine */
-	
+
 	/* The following fields are for compression
 	 * XXX should put them around ifdef's
 	 */
@@ -69,7 +68,10 @@ struct ttys {
 	struct compressor *sc_xcomp;
 	void *sc_rc_state;
 	void *sc_xc_state;
-	
+#if MS_DCC
+    int dccpos;     /* chat hack, see if got CLIENT string */
+#endif
+
 	struct ttys *next;	/* Linked list */
 };
 

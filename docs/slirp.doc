@@ -35,6 +35,7 @@ Contents
 12. Technical Information about Slirp..........................................
     8.1    Which programs do not work over Slirp?
 13. Troubleshooting............................................................
+    13.1   Other Troubleshooting Hints
 14. Answers to Frequently Asked Questions (FAQs)...............................
 15. Getting Help...............................................................
     9.1    Contacting the Author
@@ -68,7 +69,7 @@ The copyright terms and conditions:
 ---BEGIN---
 
  Copyright (c) 1995 Danny Gasparovski.  All rights reserved.
- 
+
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -224,10 +225,18 @@ cd slirp-VERSION/src
 ./configure
 make
 
-Note: if you do not intend to use PPP you can give ./configure the flag
-"--disable-ppp".  This will make a somewhat smaller executable.
+Notes:
 
-That's all there is to it.  If the compilation failed, read Section 15, 
+    if you do not intend to use PPP you can give ./configure the flag
+    "--disable-ppp".  This will make a somewhat smaller executable.
+
+    if you wish to disable the MS type DNS transfer for PPP, or enable
+    MS DCC functionality, you will need to edit the created Makefile and
+    add/remove the options.
+    By default USE_MS_DNS is enabled, MS_DCC is disabled.
+
+
+That's all there is to it.  If the compilation failed, read Section 15,
 "Getting Help" in how to get help.
 
 You should be left with a file called "slirp", this is the Slirp executable.
@@ -239,7 +248,7 @@ to make the Slirp executable smaller, but this will also remove any
 debugging information from the executable.
 
 Here are some common ./configure/compiler/pre-processor/etc. problems and
-suggestions for fixing them: 
+suggestions for fixing them:
 
 * "configure: error: can not run test program while cross compiling" (or
 similar errors about cross compiling).  This almost always happens due to an
@@ -267,6 +276,7 @@ kept.  Copy the Slirp executable somewhere in your home directory (E.g.:
 ~/bin) then to run Slirp, you simply type:
 
 ~/bin/slirp
+~/bin/slirp -P (for PPP)
 
 (or whatever the full path to "slirp" is).  That's it.  Now you activate
 your SLIP/PPP software, and start your applications.
@@ -482,7 +492,7 @@ to work which normally would not work.
 -----------------------------
 
 First you need to realize that under Slirp, nobody on the Internet can
-address your PC directly, since you do NOT have an IP address that 
+address your PC directly, since you do NOT have an IP address that
 anybody else can see.  The ONLY way they can contact you is through the
 remote host (where Slirp is running).
 
@@ -552,7 +562,7 @@ redir udp 8000 YOUR_PC_ADDRESS:8000
 
 (the 8000 is configurable)
 
-PowWow 
+PowWow
 
 redir tcp 13223 YOUR_PC_ADDRESS:13223
 
@@ -806,7 +816,7 @@ run should be run normally, as "slirp" (this is unit 0, the "main" Slirp).
 If all connections are from the same host and the same account (you have
 "socket" in your ~/.slirprc file),  then for each other connection, you run
 subsequent Slirp's as "slirp -l UNIT", where UNIT corresponds to that
-connection's ~/.slirprc-UNIT file.  If in the other hand you are connecting 
+connection's ~/.slirprc-UNIT file.  If in the other hand you are connecting
 from multiple accounts and/or multiple hosts (I.e. you used a command of the
 form "socket PORT,PASSWORD" in your ~/.slirprc file) then you run subsequent
 Slirp's as "slirp -l UNIT,HOST:PORT,PASSWORD", where UNIT corresponds to
@@ -861,7 +871,7 @@ You should also try and keep both MTU and MRU the same.
 unit.  As soon as you attach the new unit, Slirp will start sending data
 over it.  Try and attach it quickly, and keep traffic to a minimum when
 attaching.  PPP on the other hand does not suffer from this, since it will
-not be active until the two ends negotiate all options etc. and mark the 
+not be active until the two ends negotiate all options etc. and mark the
 interface as "up".
 
 * Do NOT use vj compression any ANY of the interfaces when using more than
@@ -876,7 +886,7 @@ modems using PPP and 1 modem using SLIP.
                        +---- ip processing ----+ udp  ---- udp socket
   tty2 -- ppp unwrap  -/                       + tcp  ---- tcp socket
 
-As a result, the maximum datalink layer frame length, MTU/MRU, for all 
+As a result, the maximum datalink layer frame length, MTU/MRU, for all
 connections must be the same and no compression of any kind is possible.
 
 
@@ -1008,11 +1018,11 @@ Cure
  commands.  Note that you need to use PPP for this to work.  (One way to
  test for 8bit cleanliness is to download a BINARY file with Z-Modem.  If the
  file doesn't make it, you have a "dirty" link)
- 
+
  One thing you might try is run Slirp as:
- 
+
  slirp "asyncmap ffffffff" "escape ff"
- 
+
  (quotes included!)  This will tell Slirp to escape the most common "nasty
  characters.
 
@@ -1031,8 +1041,33 @@ Cure
  situations.  If that fails, go to your shell prompt and type "nslookup".
  This should print the address and hostname of your DNS server.  Use the
  numerical IP address as your DNS.  Do NOT use the hostname.
- 
+
  If you still can't find your DNS address, ask your sysadmin for it.
+
+
+13.1 Other Troubleshooting Hints
+--------------------------------
+
+1.  Try turning down, or off the optimizer on the compiler.
+
+2.  Try compiling with the -DDEBUG option enabled, and running with
+    debugging, and ppp debugging enabled.
+
+    eg. slirp -P -d -1 debugppp
+
+    This will generate the files slirp_debug, and slirp_pppdebug which
+    may have useful information in them. (Note: The options are parsed
+    fairly late in the startup procedure, so some stuff which would
+    appear to be logged isn't)
+
+    ** Update ** You can now turn on debugging early, by uncommenting
+    the line in main.c In which case you should not put the -d -1 on the
+    command line. (It causes the file to be opened again later,
+    overwriting all the early stuff)
+
+3.  CYGWIN
+    There is a stacktrace.sh shell script that will give you the location
+    slirp crashed, if it crashes.
 
 
 14. Answers to Frequently Asked Questions (FAQs)
@@ -1049,7 +1084,7 @@ A1.  Yes, usually.  But this is highly dependent on your situation.
      to escape characters greater than ASCII 31.  Rlogin also interprets the
      ~ character, which may interfere with PPP (especially considering ~ is
      ASCII 0x7e which is used by PPP as the "end of packet" character").
-     
+
      If your PPP software is unable to escape these characters, or you're
      using (C)SLIP (which must have an 8bit clean link), your best bet is to
      try and make the link 8bit clean.  For example, on some systems you can
@@ -1058,8 +1093,8 @@ A1.  Yes, usually.  But this is highly dependent on your situation.
      link 8bit, -E to stop rlogin from interpreting the ~ character.  You
      should look at the telnet and rlogin manual pages ("man telnet" and
      "man rlogin" respectively) to see if your telnet/rlogin has similar
-     options. 
-     
+     options.
+
      Another possible solution is to use Slirp's ability to work over
      multiple hosts.  See Section 10, "Load-balancing" for details on how
      to disconnect/reconnect Slirp sessions using Internet-domain sockets.
@@ -1069,9 +1104,9 @@ Q2.  How do I run an X program on another host and have it display on my PC?
 
 A2.  Use the "redir X" command in ~/.slirprc.  This will redirect a port for
      use with X programs.
-     
+
      On startup, Slirp should print something like:
-     
+
      X Redir: In sh/bash/zsh/etc. type: DISPLAY=IP.ADDRESS:X.Y; export DISPLAY
      X Redir: In csh/tcsh/etc. type:    setenv DISPLAY IP.ADDRESS:X.Y
 
@@ -1079,20 +1114,20 @@ A2.  Use the "redir X" command in ~/.slirprc.  This will redirect a port for
      you should do as Slirp suggest above; type either of the two commands,
      depending on which shell you are using.  You could also run the X
      program as "xprog -display IP.ADDRESS:X.Y" as printed above.
-     
+
      If you missed what Slirp displayed on startup, you can telnet to
      10.0.2.0 and give Slirp the command "show X", and the above will be
      printed.
-     
+
      Note that you also have to make sure your X server will accept the
      connection.  See the man page for xhost and Xsecurity.  Be careful with
      issuing commands like "xhost +", this will allow anyone to connect to
      your X server and do basically anything they want.
-     
-     
+
+
 Q3.  When I run "talk" or "wintalk", etc. I am able to send requests to
      other people but they cannot send requests to me.  Why?
-     
+
 A3.  You won't be able to receive talk requests, period.  This is because
      Slirp never see's the incoming talk request; it is sent directly over
      the modem, most likely corrupting any incoming packet with it (which

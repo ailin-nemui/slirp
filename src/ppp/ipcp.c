@@ -132,6 +132,12 @@ ipcp_init(unit)
     wo->old_addrs = 0;
     wo->ouraddr = 0;
     wo->hisaddr = 0;
+#ifdef USE_MS_DNS
+    wo->dnsaddr[0] =
+    wo->dnsaddr[1] = 0;
+    wo->winsaddr[0] =
+    wo->winsaddr[1] = 0;
+#endif
 
     wo->neg_vj = 1;
     wo->old_vj = 0;
@@ -147,7 +153,7 @@ ipcp_init(unit)
     ao->neg_vj = 1;
     ao->maxslotindex = MAX_STATES - 1;
     ao->cflag = 1;
-    
+
     /*
      * XXX These control whether the user may use the proxyarp
      * and defaultroute options.
@@ -730,6 +736,8 @@ ipcp_reqci(f, inp, len, reject_if_disagree)
     int l = *len;		/* Length left */
     u_char maxslotindex, cflag;
 
+extern struct in_addr dns_addr, dns2_addr; /* @@Hack */
+
     /*
      * Reset all his options.
      */
@@ -855,7 +863,86 @@ ipcp_reqci(f, inp, len, reject_if_disagree)
 	    ho->neg_addr = 1;
 	    ho->hisaddr = ciaddr1;
 	    break;
-	
+
+#ifdef USE_MS_DNS
+	/* Handle Microsoft DNS Stuff */
+	case CI_MS_DNS1:
+	    IPCPDEBUG((LOG_INFO, "ipcp: received DNS Request "));
+
+	    /* If we do not have a DNS address then we cannot send it */
+        wo->dnsaddr[0]=dns_addr.s_addr;
+        wo->dnsaddr[1]=dns2_addr.s_addr;
+
+	    if (wo->dnsaddr[0] == 0 ||
+		cilen != CILEN_ADDR) {	/* Check CI length */
+		IPCPDEBUG((LOG_INFO, "DNS failed due to %d, %d, %d", wo->dnsaddr[0], cilen, CILEN_ADDR));
+		orc = CONFREJ;		/* Reject CI */
+		break;
+	    }
+	    GETLONG(tl,p);
+	    if (htonl(tl) != wo->dnsaddr[0]) {
+                DECPTR(sizeof (long),p);
+		tl = ntohl(wo->dnsaddr[0]);
+		PUTLONG(tl, p);
+		orc = CONFNAK;
+            }
+            break;
+
+	case CI_MS_WINS1:
+	    IPCPDEBUG((LOG_INFO, "ipcp: received WINS Request "));
+
+	    /* If we do not have a WINS address then we cannot send it */
+	    if (wo->winsaddr[0] == 0 ||
+		cilen != CILEN_ADDR) {	/* Check CI length */
+		orc = CONFREJ;		/* Reject CI */
+		break;
+	    }
+	    GETLONG(tl,p);
+	    if (htonl(tl) != wo->winsaddr[0]) {
+                DECPTR(sizeof (long),p);
+		tl = ntohl(wo->winsaddr[0]);
+		PUTLONG(tl, p);
+		orc = CONFNAK;
+            }
+            break;
+
+	case CI_MS_DNS2:
+	    IPCPDEBUG((LOG_INFO, "ipcp: received DNS Request "));
+
+	    /* If we do not have a DNS address then we cannot send it */
+	    if (wo->dnsaddr[0] == 0 ||  /* Yes, this is the first one! */
+		cilen != CILEN_ADDR) {	/* Check CI length */
+		orc = CONFREJ;		/* Reject CI */
+		break;
+	    }
+	    GETLONG(tl,p);
+	    if (htonl(tl) != wo->dnsaddr[1]) { /* and this is the 2nd one */
+                DECPTR(sizeof (long),p);
+		tl = ntohl(wo->dnsaddr[1]);
+		PUTLONG(tl, p);
+		orc = CONFNAK;
+            }
+            break;
+
+	case CI_MS_WINS2:
+	    IPCPDEBUG((LOG_INFO, "ipcp: received WINS Request "));
+
+	    /* If we do not have a WINS address then we cannot send it */
+	    if (wo->winsaddr[0] == 0 ||  /* Yes, this is the first one! */
+		cilen != CILEN_ADDR) {	/* Check CI length */
+		orc = CONFREJ;		/* Reject CI */
+		break;
+	    }
+	    GETLONG(tl,p);
+	    if (htonl(tl) != wo->winsaddr[1]) { /* and this is the 2nd one */
+                DECPTR(sizeof (long),p);
+		tl = ntohl(wo->winsaddr[1]);
+		PUTLONG(tl, p);
+		orc = CONFNAK;
+            }
+            break;
+#endif
+
 	case CI_COMPRESSTYPE:
 	    IPCPDEBUG((LOG_INFO, "ipcp: received COMPRESSTYPE "));
 	    if (!ao->neg_vj ||
@@ -1091,9 +1178,9 @@ ipcp_script(f, script)
     char strspeed[32], strlocal[32], strremote[32];
     char *argv[8];
 
-    sprintf(strspeed, "%d", baud_rate);
-    strcpy(strlocal, ip_ntoa(ipcp_gotoptions[f->unit].ouraddr));
-    strcpy(strremote, ip_ntoa(ipcp_hisoptions[f->unit].hisaddr));
+    snprintf(strspeed, sizeof(strspeed), "%d", baud_rate);
+    strncpy2(strlocal, ip_ntoa(ipcp_gotoptions[f->unit].ouraddr), sizeof(strlocal));
+    strncpy2(strremote, ip_ntoa(ipcp_hisoptions[f->unit].hisaddr), sizeof(strremote));
 
     argv[0] = script;
     argv[1] = ifname;

@@ -23,6 +23,8 @@ int cfg_echo _P((char *, struct socket *));
 int cfg_kill_close _P((int, int));
 int cfg_quit _P((char *, struct socket *));
 int cfg_pass _P((char *, struct socket *));
+int cfg_tty _P((char *, struct socket *));
+int cfg_nozeros _P((char *, struct socket *));
 int cfg_kill _P((char *, struct socket *));
 int cfg_close _P((char *, struct socket *));
 int cfg_exec _P((char *, struct socket *));

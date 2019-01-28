@@ -229,8 +229,8 @@ icmp_error(msrc, type, code, minsize, message)
   ip = mtod(msrc, struct ip *);
 #if DEBUG  
   { char bufa[20], bufb[20];
-    strcpy(bufa, inet_ntoa(ip->ip_src));
-    strcpy(bufb, inet_ntoa(ip->ip_dst));
+    strncpy(bufa, inet_ntoa(ip->ip_src), sizeof(bufa));
+    strncpy(bufb, inet_ntoa(ip->ip_dst), sizeof(bufb));
     DEBUG_MISC((dfd, " %.16s to %.16s\n", bufa, bufb));
   }
 #endif

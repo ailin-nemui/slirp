@@ -653,7 +653,7 @@ ChapSendStatus(cstate, code)
     char msg[256];
 
     if (code == CHAP_SUCCESS)
-	sprintf(msg, "Welcome to %s.", hostname);
+	snprintf(msg, sizeof(msg), "Welcome to %s.", hostname);
     else
 	sprintf(msg, "I don't like you.  Go 'way.");
     msglen = strlen(msg);
