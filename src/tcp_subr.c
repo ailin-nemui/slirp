@@ -560,7 +560,7 @@ struct tos_t tcptos[] = {
 	  {0, 23, IPTOS_LOWDELAY, 0},	/* telnet */
 	  {0, 80, IPTOS_THROUGHPUT, 0},	/* WWW */
 	  {0, 513, IPTOS_LOWDELAY, EMU_RLOGIN|EMU_NOCONNECT},	/* rlogin */
-	  {0, 514, IPTOS_LOWDELAY, EMU_KSH},	/* shell */
+	  {0, 514, IPTOS_LOWDELAY, EMU_RSH|EMU_NOCONNECT},	/* shell */
 	  {0, 544, IPTOS_LOWDELAY, EMU_KSH},		/* kshell */
 	  {0, 543, IPTOS_LOWDELAY, 0},	/* klogin */
 	  {0, 6667, IPTOS_THROUGHPUT, EMU_IRC},	/* IRC */
@@ -771,18 +771,17 @@ tcp_emu(so, m)
 			return 0;
 		}
 		
-#ifdef NOT_YET
 	 case EMU_RSH:
 		/*
-		 * Rlogin emulation
+		 * rsh emulation
 		 * First we accumulate all the initial option negotiation,
-		 * then fork_exec() rlogin according to the  options
+		 * then rsh_exec() rsh according to the  options
 		 */
 		{
-			int i, i2, n;
+			int  n;
 			char *ptr;
-			char args[100];
-			char term[100];
+			char *user;
+			char *args;
 			struct sbuf *so_snd = &so->so_snd;
 			struct sbuf *so_rcv = &so->so_rcv;
 			
@@ -809,44 +808,79 @@ tcp_emu(so, m)
 			 */
 			n = 0;
 			ptr = so_rcv->sb_data;
-			args[0] = 0;
-			term[0] = 0;
-			while (ptr < so_rcv->sb_wptr) {
-				if (*ptr++ == 0) {
-					n++;
-					if (n == 2) {
-						sprintf(args, "rsh -l %s %s %s",
-							ptr, inet_ntoa(so->so_faddr));
-					} else if (n == 3) {
-						i2 = so_rcv->sb_wptr - ptr;
-						for (i = 0; i < i2; i++) {
-							if (ptr[i] == '/') {
-								ptr[i] = 0;
-#ifdef HAVE_SETENV
-								sprintf(term, "%s", ptr);
-#else
-								sprintf(term, "TERM=%s", ptr);
-#endif
-								ptr[i] = '/';
-								break;
-							}
-						}
-					}
+			user="";
+			args="";
+			if (so->extra==NULL) {
+				struct socket *ns;
+				struct tcpcb* tp;
+				int port=atoi(ptr);
+				if (port <= 0) return 0;
+                if (port > 1023 || port < 512) {
+                  memcpy(so_snd->sb_wptr, "Permission denied\n", 18);
+                  so_snd->sb_wptr += 18;
+                  so_snd->sb_cc += 18;
+                  tcp_sockclosed(sototcpcb(so));
+                  return 0;
+                }
+				if ((ns=socreate()) == NULL)
+                  return 0;
+				if (tcp_attach(ns)<0) {
+                  free(ns);
+                  return 0;
 				}
+
+				ns->so_laddr=so->so_laddr;
+				ns->so_lport=htons(port);
+
+				(void) tcp_mss(sototcpcb(ns), 0);
+
+				ns->so_faddr=so->so_faddr;
+				ns->so_fport=htons(IPPORT_RESERVED-1); /* Use a fake port. */
+
+				if (ns->so_faddr.s_addr == 0 || 
+					ns->so_faddr.s_addr == loopback_addr.s_addr)
+                  ns->so_faddr = our_addr;
+
+				ns->so_iptos = tcp_tos(ns);
+				tp = sototcpcb(ns);
+                
+				tcp_template(tp);
+                
+				/* Compute window scaling to request.  */
+				/*	while (tp->request_r_scale < TCP_MAX_WINSHIFT &&
+				 *		(TCP_MAXWIN << tp->request_r_scale) < so->so_rcv.sb_hiwat)
+				 *		tp->request_r_scale++;
+				 */
+
+                /*soisfconnecting(ns);*/
+
+				tcpstat.tcps_connattempt++;
+					
+				tp->t_state = TCPS_SYN_SENT;
+				tp->t_timer[TCPT_KEEP] = TCPTV_KEEP_INIT;
+				tp->iss = tcp_iss; 
+				tcp_iss += TCP_ISSINCR/2;
+				tcp_sendseqinit(tp);
+				tcp_output(tp);
+				so->extra=ns;
+			}
+			while (ptr < so_rcv->sb_wptr) {
+              if (*ptr++ == 0) {
+                n++;
+                if (n == 2) {
+                  user=ptr;
+                } else if (n == 3) {
+                  args=ptr;
+                }
+              }
 			}
 			
 			if (n != 4)
-			   return 0;
+              return 0;
 			
-			/* We have it, set our term variable and fork_exec() */
-#ifdef HAVE_SETENV
-			setenv("TERM", term, 1);
-#else
-			putenv(term);
-#endif
-			fork_exec(so, args, 2);
-			term[0] = 0;
+			rsh_exec(so,so->extra, user, inet_ntoa(so->so_faddr), args);
 			so->so_emu = 0;
+			so->extra=NULL;
 			
 			/* And finally, send the client a 0 character */
 			so_snd->sb_wptr[0] = 0;
@@ -855,7 +889,6 @@ tcp_emu(so, m)
 			
 			return 0;
 		}
-#endif
 		
 	 case EMU_CTL:
 		{

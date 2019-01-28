@@ -13,3 +13,4 @@ void add_emu _P((char *));
 void u_sleep _P((int));
 void fd_nonblock _P((int));
 void fd_block _P((int));
+int rsh_exec _P((struct socket *, struct socket *, char *, char *, char *));

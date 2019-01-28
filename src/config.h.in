@@ -180,3 +180,6 @@
 
 /* Define if you have fchmod */
 #undef HAVE_FCHMOD
+
+/* Define if you have <sys/type32.h> */
+#undef HAVE_SYS_TYPES32_H

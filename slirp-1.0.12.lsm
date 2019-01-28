@@ -1,7 +1,7 @@
 Begin3
 Title:                  slirp
-Version:                1.0.10
-Entered-date:           May 26, 2000
+Version:                1.0.12
+Entered-date:           Aug 23, 2000
 Description:            Slirp is a TCP/IP emulator which turns an ordinary 
                         shell account into a (C)SLIP/PPP account.  This allows
                         shell users to run ftp, netscape, CUSeeMe, etc.

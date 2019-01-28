@@ -821,3 +821,93 @@ fd_block(fd)
 #endif
 }
 
+
+/*
+ * invoke RSH
+ */
+int
+rsh_exec(so,ns, user, host, args)
+	struct socket *so;
+	struct socket *ns;
+	char *user;
+	char *host;
+	char *args;
+{
+	int fd[2];
+	int fd0[2];
+	int s;
+	char buff[256];
+	
+	DEBUG_CALL("rsh_exec");
+	DEBUG_ARG("so = %lx", (long)so);
+	
+	if (pipe(fd)<0) {
+          lprint("Error: pipe failed: %s\n", strerror(errno));
+          return 0;
+	}
+/* #ifdef HAVE_SOCKETPAIR */
+#if 1
+        if (socketpair(PF_UNIX,SOCK_STREAM,0, fd0) == -1) {
+          close(fd[0]);
+          close(fd[1]);
+          lprint("Error: openpty failed: %s\n", strerror(errno));
+          return 0;
+        }
+#else
+        if (openpty(&fd0[0], &fd0[1]) == -1) {
+          close(fd[0]);
+          close(fd[1]);
+          lprint("Error: openpty failed: %s\n", strerror(errno));
+          return 0;
+        }
+#endif
+	
+	switch(fork()) {
+	 case -1:
+           lprint("Error: fork failed: %s\n", strerror(errno));
+           close(fd[0]);
+           close(fd[1]);
+           close(fd0[0]);
+           close(fd0[1]);
+           return 0;
+           
+	 case 0:
+           close(fd[0]);
+           close(fd0[0]);
+           
+		/* Set the DISPLAY */
+           if (x_port >= 0) {
+#ifdef HAVE_SETENV
+             sprintf(buff, "%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+             setenv("DISPLAY", buff, 1);
+#else
+             sprintf(buff, "DISPLAY=%s:%d.%d", inet_ntoa(our_addr), x_port, x_screen);
+             putenv(buff);
+#endif
+           }
+           
+           dup2(fd0[1], 0);
+           dup2(fd0[1], 1);
+           dup2(fd[1], 2);
+           for (s = 3; s <= 255; s++)
+             close(s);
+           
+           execlp("rsh","rsh","-l", user, host, args, NULL);
+           
+           /* Ooops, failed, let's tell the user why */
+           
+           sprintf(buff, "Error: execlp of %s failed: %s\n", 
+                   "rsh", strerror(errno));
+           write(2, buff, strlen(buff)+1);
+           close(0); close(1); close(2); /* XXX */
+           exit(1);
+           
+        default:
+          close(fd[1]);
+          close(fd0[1]);
+          ns->s=fd[0];
+          so->s=fd0[0];
+          
+          return 1;
+	}
+}

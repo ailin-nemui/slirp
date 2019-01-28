@@ -67,6 +67,10 @@ void
 sofree(so)
 	struct socket *so;
 {
+  if (so->so_emu==EMU_RSH && so->extra) {
+	sofree(so->extra);
+	so->extra=NULL;
+  }
   if (so == tcp_last_so)
     tcp_last_so = &tcb;
   else if (so == udp_last_so)
